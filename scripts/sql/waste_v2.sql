@@ -102,3 +102,10 @@ ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS photo_bill_url TEXT;
 -- ตรวจรถทะเบียนเดียวกันเวลาทับกัน (เทียบทะเบียนแบบตัดช่องว่าง/ขีด)
 CREATE INDEX IF NOT EXISTS waste_records_plate_day_idx
   ON waste_records (record_date, (regexp_replace(upper(plate_no), '[^0-9A-Zก-๙]', '', 'g')));
+
+-- เตือนบิลน่าสงสัย (โครงการเดียวกันเวลาทับกัน / ทะเบียนเดียวกันข้ามโครงการห่างไม่ถึง 30 นาที)
+-- ผู้กรอกกดยืนยันแล้วจึงบันทึกได้ — เก็บว่าใครยืนยัน เมื่อไร และชนกับบิลไหน
+ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_confirmed_by TEXT;
+ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_confirmed_at TIMESTAMPTZ;
+ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_detail TEXT;
+CREATE INDEX IF NOT EXISTS waste_records_proj_day_idx ON waste_records (project_id, record_date);

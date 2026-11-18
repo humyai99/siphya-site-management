@@ -12,6 +12,9 @@
 //   WASTE_deleteRecord(id)         ลบ — เที่ยวที่ออก NPO แล้วลบไม่ได้
 //   WASTE_timeConflicts()          (admin) รถทะเบียนเดียวกัน วันเดียวกัน เวลาเข้า-ออกทับกัน
 //                                  — ตอนบันทึก/แก้ไข/กู้คืน ถ้าทับกับรายการอื่นจะไม่ให้บันทึก
+//   WASTE_suspectBills()           (admin) บิลน่าสงสัย: โครงการเดียวกันเวลาทับกัน (ทะเบียนต่าง) /
+//                                  ทะเบียนเดียวกันข้ามโครงการห่างไม่ถึง 30 นาที — ตอนบันทึก/แก้ไขต้องกดยืนยันก่อน
+//                                  (data.confirmWarnings = true) ถ้าไม่ยืนยันจะได้ {needConfirm, warnings}
 //   WASTE_listDeleted({project})   รายการที่ลบแล้ว (ยังไม่กู้คืน)
 //   WASTE_restoreRecord(historyId) กู้คืนรายการที่ลบ (ข้อมูล+รูปเดิมครบ)
 //
@@ -147,6 +150,64 @@ function clashMessage(c, plate) {
     `— รถคันเดียวอยู่ 2 ที่ในเวลาเดียวกันไม่ได้ กรุณาตรวจสอบทะเบียนและเวลา`;
 }
 
+// ---------- เตือนบิลน่าสงสัย (ยืนยันแล้วบันทึกได้) ----------
+// 1) site: โครงการเดียวกัน วันเดียวกัน เวลาเข้า-ออกทับกัน แต่ทะเบียนต่างกัน
+//    (กันเคสผู้รับเหมาเขียนทะเบียนผิด → บิลเดียวกันถูกกรอก 2 ครั้ง) — รถ 2 คันเข้าพร้อมกันได้จริง จึงแค่เตือน
+// 2) gap:  ทะเบียนเดียวกัน คนละโครงการ ออกจากที่หนึ่งแล้วเข้าอีกที่ห่างกันไม่ถึง GAP_MIN นาที
+const GAP_MIN = 30;
+const TSQL = c => `lpad(split_part(${c}, ':', 1), 2, '0') || ':' || split_part(${c}, ':', 2)`;
+const MSQL = c => `(CASE WHEN ${c} ~ '^\\d{1,2}[:.]\\d{2}'
+  THEN split_part(replace(${c}, '.', ':'), ':', 1)::int * 60 + left(split_part(replace(${c}, '.', ':'), ':', 2), 2)::int END)`;
+const toMin = t => { const m = hhmm(t).match(/^(\d{2}):(\d{2})$/); return m ? +m[1] * 60 + +m[2] : null; };
+
+async function findWarnings(client, projectId, plate, date, timeIn, timeOut, excludeId, bill) {
+  const p = normPlate(plate), a = hhmm(timeIn), b = hhmm(timeOut);
+  if (!date || !a || !b) return moreWarnings(client, projectId, p, bill, date, null, null, excludeId,
+    `w.id, w.bill_no AS "billNo", w.plate_no AS "plateNo", w.floor_zone AS zone, w.recorder,
+      COALESCE(w.photo_bill_url, '') AS "billPhoto", p.name AS project, w.time_in AS "timeIn", w.time_out AS "timeOut"`, []);
+  const cols = `w.id, w.bill_no AS "billNo", w.plate_no AS "plateNo", w.floor_zone AS zone, w.recorder,
+      COALESCE(w.photo_bill_url, '') AS "billPhoto", p.name AS project,
+      ${TSQL('w.time_in')} AS "timeIn", ${TSQL('w.time_out')} AS "timeOut"`;
+  const site = (await client.query(
+    `SELECT 'site' AS kind, ${cols}
+       FROM waste_records w LEFT JOIN projects p ON p.id = w.project_id
+      WHERE w.project_id = $1 AND w.record_date = $2 AND w.id <> $6
+        AND ${PLATE_SQL('w.plate_no')} <> $5
+        AND COALESCE(w.time_in, '') <> '' AND COALESCE(w.time_out, '') <> ''
+        AND ${TSQL('w.time_in')} < $4 AND $3 < ${TSQL('w.time_out')}
+      ORDER BY w.time_in LIMIT 5`, [projectId, date, a, b, p, excludeId || 0])).rows;
+  return site.concat(await moreWarnings(client, projectId, p, bill, date, a, b, excludeId, cols, site));
+}
+async function moreWarnings(client, projectId, p, bill, date, a, b, excludeId, cols, site) {
+  let gap = [];
+  if (p && a && b) {
+    const ia = toMin(a), ob = toMin(b);
+    gap = (await client.query(
+      `SELECT 'gap' AS kind, ${cols}
+         FROM waste_records w LEFT JOIN projects p ON p.id = w.project_id
+        WHERE w.record_date = $1 AND ${PLATE_SQL('w.plate_no')} = $2 AND w.project_id <> $3 AND w.id <> $6
+          AND ((${MSQL('w.time_out')} <= $4 AND $4 - ${MSQL('w.time_out')} < ${GAP_MIN})
+            OR (${MSQL('w.time_in')} >= $5 AND ${MSQL('w.time_in')} - $5 < ${GAP_MIN}))
+        ORDER BY w.time_in LIMIT 5`, [date, p, projectId, ia, ob, excludeId || 0])).rows;
+  }
+  // 3) bill: เลขที่บิลเดียวกัน โครงการเดียวกัน แต่ทะเบียนต่างกัน (บิลไม่มีเลขซ้ำ → น่าจะกรอกซ้ำ ทะเบียนผิด) — ทุกวันที่
+  const nb = normPlate(bill);
+  let dupBill = [];
+  if (nb) {
+    const seen = new Set(site.map(x => x.id));
+    dupBill = (await client.query(
+      `SELECT 'bill' AS kind, ${cols}, TO_CHAR(w.record_date, 'DD/MM/YYYY') AS date
+         FROM waste_records w LEFT JOIN projects p ON p.id = w.project_id
+        WHERE w.project_id = $1 AND ${PLATE_SQL('w.bill_no')} = $2 AND ${PLATE_SQL('w.plate_no')} <> $3 AND w.id <> $4
+        ORDER BY w.record_date DESC LIMIT 5`, [projectId, nb, p, excludeId || 0])).rows.filter(x => !seen.has(x.id));
+  }
+  return dupBill.concat(gap);
+}
+function warningSummary(list) {
+  return list.map(w => ({ site: 'เวลาทับกับ', bill: 'เลขบิลเดียวกับ' }[w.kind] || `ทะเบียนเดียวกันห่างไม่ถึง ${GAP_MIN} นาที:`) +
+    ` บิล ${w.billNo || '-'} ทะเบียน ${w.plateNo || '-'} ${w.timeIn}–${w.timeOut} (${w.project || '-'})`).join(' | ').slice(0, 1000);
+}
+
 function userName(ctx) { return (ctx && ctx.user && (ctx.user.username || ctx.user.full_name)) || ''; }
 
 // ตรวจข้อมูลฟอร์ม คืนข้อความผิด หรือ null ถ้าผ่าน (photos = รูปที่มีอยู่แล้วตอนแก้ไข)
@@ -193,6 +254,10 @@ async function WASTE_saveData(data) {
     const clash = await findTimeClash(client, data.plateNo, date, data.timeIn, data.time, 0);
     if (clash) return { success: false, message: clashMessage(clash, str(data.plateNo, 50)), clash: true };
 
+    const warnings = await findWarnings(client, projectId, data.plateNo, date, data.timeIn, data.time, 0, data.billNo);
+    if (warnings.length && !data.confirmWarnings) return { success: false, needConfirm: true, warnings };
+    const warnBy = warnings.length ? by || '(ไม่ทราบ)' : null, warnText = warnings.length ? warningSummary(warnings) : null;
+
     const urls = [data.photo1, data.photo2, data.photo3, data.photo4].map((d, i) => {
       try { return savePhotoFile(d, PHOTO_TAGS[i]); }
       catch (e) { console.warn('[waste] บันทึกรูปไม่สำเร็จ:', e.message); return null; }
@@ -202,12 +267,15 @@ async function WASTE_saveData(data) {
       `INSERT INTO waste_records (
          project_id, record_date, floor_zone, time_in, time_out, bill_no, plate_no, recorder,
          trips, truck_type, waste_concrete, waste_construction, waste_packing, waste_system,
-         volume_m3, cost, photo_front_url, photo_waste_url, photo_canvas_url, note, created_at, created_by, photo_bill_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW(),$20,$21)`,
+         volume_m3, cost, photo_front_url, photo_waste_url, photo_canvas_url, note, created_at, created_by, photo_bill_url,
+         warn_confirmed_by, warn_confirmed_at, warn_detail)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,NOW(),$20,$21,
+         $22::text, CASE WHEN $22::text IS NULL THEN NULL ELSE NOW() END, $23)`,
       [projectId, date, str(data.location, 100), str(data.timeIn, 10), str(data.time, 10),
         str(data.billNo, 50), str(data.plateNo, 50), str(data.recorder, 100), str(data.truck),
         num(data.wasteConcrete), num(data.wasteConstruction), num(data.wastePacking), num(data.wasteSystem),
-        truck.volume_m3, truck.cost_per_trip, urls[0], urls[1], urls[2], str(data.note, 1000), by, urls[3]]);
+        truck.volume_m3, truck.cost_per_trip, urls[0], urls[1], urls[2], str(data.note, 1000), by, urls[3],
+        warnBy, warnText]);
     return { success: true };
   });
 }
@@ -292,6 +360,9 @@ async function WASTE_updateRecord(id, data) {
     if (dup.rows.length) throw new UserError('เลขที่บิล + ทะเบียนรถ นี้มีอยู่แล้วในโครงการนี้');
     const clash = await findTimeClash(client, data.plateNo, parseDate(data.date), data.timeIn, data.time, rid);
     if (clash) throw new UserError(clashMessage(clash, str(data.plateNo, 50)));
+    const warnings = await findWarnings(client, projectId, data.plateNo, parseDate(data.date), data.timeIn, data.time, rid, data.billNo);
+    if (warnings.length && !data.confirmWarnings) return { success: false, needConfirm: true, warnings };
+    const warnBy = warnings.length ? by || '(ไม่ทราบ)' : null, warnText = warnings.length ? warningSummary(warnings) : null;
 
     const urls = [1, 2, 3, 4].map(i => {
       const d = data['photo' + i];
@@ -304,12 +375,14 @@ async function WASTE_updateRecord(id, data) {
       `UPDATE waste_records SET project_id=$1, record_date=$2, floor_zone=$3, time_in=$4, time_out=$5, bill_no=$6,
          plate_no=$7, recorder=$8, truck_type=$9, waste_concrete=$10, waste_construction=$11, waste_packing=$12,
          waste_system=$13, volume_m3=$14, cost=$15, photo_front_url=$16, photo_waste_url=$17, photo_canvas_url=$18,
-         note=$19, updated_at=NOW(), updated_by=$20, photo_bill_url=$22
+         note=$19, updated_at=NOW(), updated_by=$20, photo_bill_url=$22,
+         warn_confirmed_by=$23::text, warn_confirmed_at=CASE WHEN $23::text IS NULL THEN NULL ELSE NOW() END, warn_detail=$24
        WHERE id = $21`,
       [projectId, parseDate(data.date), str(data.location, 100), str(data.timeIn, 10), str(data.time, 10),
         str(data.billNo, 50), str(data.plateNo, 50), str(data.recorder, 100), str(data.truck),
         num(data.wasteConcrete), num(data.wasteConstruction), num(data.wastePacking), num(data.wasteSystem),
-        truck.volume_m3, truck.cost_per_trip, urls[0], urls[1], urls[2], str(data.note, 1000), by, rid, urls[3]]);
+        truck.volume_m3, truck.cost_per_trip, urls[0], urls[1], urls[2], str(data.note, 1000), by, rid, urls[3],
+        warnBy, warnText]);
     return { success: true };
   });
 }
@@ -347,6 +420,53 @@ async function WASTE_timeConflicts() {
         AND ${T('a', 'time_in')} < ${T('b', 'time_out')} AND ${T('b', 'time_in')} < ${T('a', 'time_out')}
       ORDER BY a.record_date DESC, ${T('a', 'time_in')} LIMIT 300`);
   return r.rows;
+}
+
+// รายงานบิลน่าสงสัย (admin): คู่รายการที่ระบบเตือนตอนกรอก — ใช้ไล่ตรวจก่อนออก NPO / ทำ payment
+//   site = โครงการเดียวกัน วันเดียวกัน เวลาทับกัน (ทะเบียนต่างกัน)
+//   gap  = ทะเบียนเดียวกัน คนละโครงการ ห่างกันไม่ถึง GAP_MIN นาที
+async function WASTE_suspectBills() {
+  if (!(this && this.user && this.user.role === 'admin')) throw new UserError('ต้องใช้บัญชีผู้ดูแลระบบ (admin)');
+  const T = (c, f) => TSQL(`${c}.${f}`);
+  const M = (c, f) => MSQL(`${c}.${f}`);
+  const side = c => `json_build_object('id', ${c}.id, 'project', p${c}.name, 'zone', ${c}.floor_zone,
+      'timeIn', ${T(c, 'time_in')}, 'timeOut', ${T(c, 'time_out')}, 'billNo', ${c}.bill_no, 'plateNo', ${c}.plate_no,
+      'billPhoto', COALESCE(${c}.photo_bill_url, ''), 'frontPhoto', COALESCE(${c}.photo_front_url, ''),
+      'recorder', ${c}.recorder, 'createdBy', COALESCE(${c}.created_by, ''),
+      'confirmedBy', COALESCE(${c}.warn_confirmed_by, ''),
+      'confirmedAt', COALESCE(TO_CHAR(${c}.warn_confirmed_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI'), ''),
+      'npo', n${c}.npo_no)`;
+  const filled = c => `COALESCE(${c}.time_in, '') <> '' AND COALESCE(${c}.time_out, '') <> ''`;
+  const r = await sitePool.query(
+    `SELECT CASE WHEN a.project_id = b.project_id THEN 'site' ELSE 'gap' END AS kind,
+            TO_CHAR(a.record_date, 'DD/MM/YYYY') AS date, ${side('a')} AS a, ${side('b')} AS b
+       FROM waste_records a
+       JOIN waste_records b ON b.record_date = a.record_date AND b.id > a.id
+       LEFT JOIN projects pa ON pa.id = a.project_id LEFT JOIN projects pb ON pb.id = b.project_id
+       LEFT JOIN npo_reports na ON na.id = a.npo_id LEFT JOIN npo_reports nb ON nb.id = b.npo_id
+      WHERE ${filled('a')} AND ${filled('b')}
+        AND (
+          (a.project_id = b.project_id AND ${PLATE_SQL('a.plate_no')} <> ${PLATE_SQL('b.plate_no')}
+            AND ${T('a', 'time_in')} < ${T('b', 'time_out')} AND ${T('b', 'time_in')} < ${T('a', 'time_out')})
+          OR
+          (a.project_id <> b.project_id AND ${PLATE_SQL('a.plate_no')} = ${PLATE_SQL('b.plate_no')}
+            AND ((${M('a', 'time_out')} <= ${M('b', 'time_in')} AND ${M('b', 'time_in')} - ${M('a', 'time_out')} < ${GAP_MIN})
+              OR (${M('b', 'time_out')} <= ${M('a', 'time_in')} AND ${M('a', 'time_in')} - ${M('b', 'time_out')} < ${GAP_MIN})))
+        )
+      ORDER BY a.record_date DESC, ${T('a', 'time_in')} LIMIT 300`);
+  // เลขที่บิลเดียวกัน โครงการเดียวกัน ทะเบียนต่างกัน (ข้ามวันได้)
+  const rb = await sitePool.query(
+    `SELECT 'bill' AS kind, TO_CHAR(a.record_date, 'DD/MM/YYYY') AS date, ${side('a')} AS a, ${side('b')} AS b
+       FROM waste_records a
+       JOIN waste_records b ON b.project_id = a.project_id AND b.id > a.id
+        AND ${PLATE_SQL('b.bill_no')} = ${PLATE_SQL('a.bill_no')} AND ${PLATE_SQL('a.bill_no')} <> ''
+        AND ${PLATE_SQL('b.plate_no')} <> ${PLATE_SQL('a.plate_no')}
+       LEFT JOIN projects pa ON pa.id = a.project_id LEFT JOIN projects pb ON pb.id = b.project_id
+       LEFT JOIN npo_reports na ON na.id = a.npo_id LEFT JOIN npo_reports nb ON nb.id = b.npo_id
+      ORDER BY a.record_date DESC LIMIT 300`);
+  const key = x => Math.min(x.a.id, x.b.id) + '_' + Math.max(x.a.id, x.b.id);
+  const seen = new Set(rb.rows.map(key));
+  return rb.rows.concat(r.rows.filter(x => !seen.has(key(x))));
 }
 
 async function WASTE_listDeleted(opts) {
@@ -755,7 +875,7 @@ module.exports = {
   functions: {
     WASTE_getProjects, WASTE_saveNewProject, WASTE_saveData, WASTE_getDashboardData,
     WASTE_listRecords, WASTE_getRecord, WASTE_updateRecord, WASTE_deleteRecord,
-    WASTE_listDeleted, WASTE_restoreRecord, WASTE_timeConflicts,
+    WASTE_listDeleted, WASTE_restoreRecord, WASTE_timeConflicts, WASTE_suspectBills,
     WASTE_truckTypes, WASTE_adminTruckTypes, WASTE_saveTruckType,
     WASTE_npoOptions, WASTE_npoPending, WASTE_npoPreview, WASTE_npoCreate,
     WASTE_npoList, WASTE_npoCancel, WASTE_npoPdf

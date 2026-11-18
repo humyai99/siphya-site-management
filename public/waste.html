@@ -142,7 +142,7 @@
     <button class="tab-btn active" id="tabFormBtn" onclick="switchTab('form')">📝 บันทึกข้อมูลไซต์งาน</button>
     <button class="tab-btn" id="tabEditBtn" onclick="switchTab('edit')">✎ แก้ไข/ลบรายการ</button>
     <button class="tab-btn" id="tabDashBtn" onclick="switchTab('dash')">📊 Dashboard สรุปผล</button>
-    <button class="tab-btn" id="tabClashBtn" onclick="switchTab('clash')" style="display:none">⚠️ รถซ้ำเวลา</button>
+    <button class="tab-btn" id="tabClashBtn" onclick="switchTab('clash')" style="display:none">⚠️ รถซ้ำเวลา / บิลน่าสงสัย</button>
   </div>
 
   <!-- TAB 1: FORM -->
@@ -365,6 +365,15 @@
       ตั้งแต่นี้ไประบบไม่ให้บันทึกรายการที่เวลาทับกันแล้ว รายการในหน้านี้คือของที่บันทึกไว้ก่อนหน้า
     </div>
     <div id="clashList"><div class="card" style="text-align:center;color:#718096;">กำลังโหลด...</div></div>
+
+    <div class="card" style="font-size:13px;color:#4a5568;line-height:1.6;margin-top:18px">
+      <b>🔎 บิลน่าสงสัย — ตรวจก่อนออก NPO / ทำ payment</b><br>
+      (1) โครงการเดียวกัน วันเดียวกัน เวลาเข้า–ออกทับกัน แต่ทะเบียนต่างกัน — อาจเป็นบิลเดียวกันที่เขียนทะเบียนผิด ·
+      (2) เลขที่บิลเดียวกัน โครงการเดียวกัน แต่ทะเบียนต่างกัน (ข้ามวันก็เตือน) ·
+      (3) ทะเบียนเดียวกัน คนละโครงการ ออกจากที่หนึ่งแล้วเข้าอีกที่ห่างไม่ถึง 30 นาที ·
+      ตอนกรอกระบบให้ดูรูปบิลเทียบกันและกดยืนยันก่อน "ยืนยันว่าไม่ซ้ำ" = ชื่อบัญชีที่กดยืนยัน (ว่าง = บันทึกก่อนมีระบบเตือน)
+    </div>
+    <div id="suspectList"><div class="card" style="text-align:center;color:#718096;">กำลังโหลด...</div></div>
   </div>
 
   <!-- TAB 2: DASHBOARD -->
@@ -642,7 +651,7 @@ function switchTab(tab) {
   });
   if (tab === 'dash') loadDashboardData();
   if (tab === 'edit') { fillEditProjects(); loadRecordList(); }
-  if (tab === 'clash') loadClashes();
+  if (tab === 'clash') { loadClashes(); loadSuspects(); }
 }
 
 // ================= แก้ไข / ลบรายการ =================
@@ -716,7 +725,7 @@ function loadClashes(quiet) {
     .withSuccessHandler(function(rows) {
       const btn = $('tabClashBtn');
       btn.style.display = '';               // เห็นปุ่มเฉพาะ admin (staff เรียกไม่ผ่าน)
-      btn.textContent = '⚠️ รถซ้ำเวลา' + (rows.length ? ' (' + rows.length + ')' : '');
+      btn.textContent = '⚠️ รถซ้ำเวลา / บิลน่าสงสัย' + (rows.length ? ' (' + rows.length + ')' : '');
       btn.style.borderColor = rows.length ? '#e53e3e' : '';
       if (quiet) return;
       const box = $('clashList');
@@ -740,6 +749,83 @@ function loadClashes(quiet) {
     })
     .withFailureHandler(function() { $('tabClashBtn').style.display = 'none'; })
     .WASTE_timeConflicts();
+}
+
+// ================= กล่องยืนยันบิลน่าสงสัย =================
+function showWarnModal(warnings) {
+  return new Promise(function(resolve) {
+    const mine = ($('p4') && $('p4').getAttribute('src')) || (typeof editPhotos !== 'undefined' && editPhotos && editPhotos[3]) || '';
+    const img = (url, label) => url
+      ? '<a href="' + escapeHtml(url) + '" target="_blank"><img src="' + escapeHtml(url) + '" style="width:100%;max-height:220px;object-fit:contain;border:1px solid #dce1d8;border-radius:8px;background:#f7f7f7"></a>'
+      : '<div style="padding:40px 0;text-align:center;color:#a0aec0;border:1px dashed #cbd5e0;border-radius:8px">ไม่มีรูป' + label + '</div>';
+    const cur = {
+      bill: $('billNo').value, plate: $('plateNo').value, tin: $('timeIn').value, tout: $('time').value
+    };
+    const items = warnings.map(function(w) {
+      const why = {
+        site: 'โครงการเดียวกัน เวลาทับกัน แต่ทะเบียนต่างกัน — อาจเป็นบิลเดียวกันที่เขียนทะเบียนผิด',
+        bill: 'เลขที่บิลนี้เคยบันทึกแล้วในโครงการนี้ แต่ทะเบียนต่างกัน — น่าจะเป็นบิลเดียวกันกรอกซ้ำ',
+        gap: 'ทะเบียนเดียวกัน อยู่อีกโครงการ ห่างกันไม่ถึง 30 นาที — รถวิ่งไม่ทัน อาจเขียนทะเบียนหรือเวลาผิด'
+      }[w.kind] || '';
+      return '<div style="border:1px solid #f5c6cb;background:#fff5f5;border-radius:10px;padding:10px;margin-bottom:10px">' +
+        '<div style="font-weight:700;color:#c53030;margin-bottom:8px">⚠️ ' + why + '</div>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+          '<div style="flex:1 1 200px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">ที่บันทึกไว้แล้ว' + (w.date ? ' (' + escapeHtml(w.date) + ')' : '') + ': บิล ' + escapeHtml(w.billNo || '-') +
+            ' · ' + escapeHtml(w.plateNo || '-') + ' · ' + escapeHtml(w.timeIn) + '–' + escapeHtml(w.timeOut) +
+            '<br><span style="color:#718096;font-weight:400">' + escapeHtml(w.project || '-') + ' · ' + escapeHtml(w.zone || '-') + ' · ผู้บันทึก ' + escapeHtml(w.recorder || '-') + '</span></div>' +
+            img(w.billPhoto, 'บิล') + '</div>' +
+          '<div style="flex:1 1 200px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">ที่กำลังบันทึก: บิล ' + escapeHtml(cur.bill || '-') +
+            ' · ' + escapeHtml(cur.plate || '-') + ' · ' + escapeHtml(cur.tin) + '–' + escapeHtml(cur.tout) + '<br>&nbsp;</div>' +
+            img(mine, 'บิล') + '</div>' +
+        '</div></div>';
+    }).join('');
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:20px 10px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:760px;width:100%;padding:16px">' +
+      '<div style="font-size:17px;font-weight:800;margin-bottom:6px">ตรวจบิลก่อนบันทึก</div>' +
+      '<div style="font-size:13px;color:#4a5568;margin-bottom:12px">เทียบรูปบิลทั้ง 2 ใบ ถ้าเป็นบิลเดียวกัน ให้กดกลับไปแก้ ถ้าเป็นรถคนละเที่ยวจริง ให้กดยืนยัน (ระบบจะเก็บชื่อผู้ยืนยันไว้)</div>' +
+      items +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px">' +
+        '<button type="button" id="warnBack" class="btn-action" style="padding:10px 16px">← กลับไปแก้</button>' +
+        '<button type="button" id="warnOk" class="btn-action danger" style="padding:10px 16px">ยืนยันว่าเป็นคนละเที่ยว บันทึกต่อ</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    const done = v => { ov.remove(); resolve(v); };
+    ov.querySelector('#warnBack').onclick = () => done(false);
+    ov.querySelector('#warnOk').onclick = () => done(true);
+  });
+}
+
+// ================= บิลน่าสงสัย (admin) =================
+function loadSuspects() {
+  const box = $('suspectList');
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      const btn = $('tabClashBtn');
+      const n = rows.filter(r => !r.a.confirmedBy && !r.b.confirmedBy).length;
+      if (n) { btn.style.borderColor = '#e53e3e'; }
+      if (!rows.length) { box.innerHTML = '<div class="card" style="text-align:center;color:#2d6a4f;">✅ ไม่พบบิลน่าสงสัย</div>'; return; }
+      const side = (x, tag) => '<tr><td style="font-weight:700;color:#c53030">' + tag + '</td>' +
+        '<td>' + escapeHtml(x.project || '-') + '<br><span style="color:#718096">' + escapeHtml(x.zone || '-') + '</span></td>' +
+        '<td style="white-space:nowrap"><b>' + escapeHtml(x.timeIn) + '–' + escapeHtml(x.timeOut) + '</b></td>' +
+        '<td style="white-space:nowrap">' + (x.billPhoto ? '<a href="' + escapeHtml(x.billPhoto) + '" target="_blank" style="color:#2d6a4f;font-weight:700">🧾 ' + escapeHtml(x.billNo) + '</a>' : escapeHtml(x.billNo || '-')) +
+          '<br>' + (x.frontPhoto ? '<a href="' + escapeHtml(x.frontPhoto) + '" target="_blank" style="color:#718096">🚛 ' + escapeHtml(x.plateNo || '') + '</a>' : '<span style="color:#718096">' + escapeHtml(x.plateNo || '') + '</span>') + '</td>' +
+        '<td>' + escapeHtml(x.recorder || '-') + '<br><span style="color:#718096">' + escapeHtml(x.createdBy || '') + '</span></td>' +
+        '<td>' + (x.confirmedBy ? '✔ ' + escapeHtml(x.confirmedBy) + '<br><span style="color:#718096">' + escapeHtml(x.confirmedAt) + '</span>' : '<span style="color:#a0aec0">—</span>') + '</td>' +
+        '<td>' + (x.npo ? '<span class="lock-tag">🔒 NPO ' + escapeHtml(x.npo) + '</span>' :
+          '<button type="button" class="btn-action" onclick="startEdit(' + x.id + ')">✎ แก้ไข</button>') + '</td></tr>';
+      box.innerHTML = rows.map(r => {
+        const label = { site: 'โครงการเดียวกัน เวลาทับกัน', bill: 'เลขที่บิลซ้ำ ทะเบียนต่างกัน', gap: 'ทะเบียนเดียวกัน ห่างไม่ถึง 30 นาที' }[r.kind] || '';
+        const title = r.kind === 'gap' ? '🚛 ทะเบียน ' + escapeHtml(r.a.plateNo || '-') : '🏗 ' + escapeHtml(r.a.project || '-');
+        return '<div class="dash-group-box"><div class="dash-group-header"><div>' + title + ' · ' + escapeHtml(r.date) + '</div>' +
+          '<div style="font-size:11px;background:#feebc8;color:#9c4221;padding:3px 8px;border-radius:12px;">' + label + '</div></div>' +
+          '<div style="overflow-x:auto"><table><thead><tr><th></th><th>โครงการ / โซน</th><th>เวลา</th><th>บิล / ทะเบียน</th>' +
+          '<th>ผู้บันทึก / บัญชี</th><th>ยืนยันว่าไม่ซ้ำ</th><th></th></tr></thead><tbody>' +
+          side(r.a, 'A') + side(r.b, 'B') + '</tbody></table></div></div>';
+      }).join('');
+    })
+    .withFailureHandler(function(err) { box.innerHTML = '<div class="card" style="color:#e53e3e;">โหลดไม่สำเร็จ: ' + escapeHtml(err.message) + '</div>'; })
+    .WASTE_suspectBills();
 }
 
 function setPhotoPreview(i, url) {
@@ -1093,9 +1179,21 @@ function handleFormSubmit(e) {
     formData.photo4 = images[3];
     if (btn) btn.textContent = '⏳ กำลังบันทึกข้อมูล...';
 
+    // ระบบเตือนบิลน่าสงสัย → ถามยืนยัน แล้วส่งซ้ำพร้อม confirmWarnings (รูปบีบอัดแล้ว ไม่ต้องทำใหม่)
+    function askConfirm(res, resend) {
+      showWarnModal(res.warnings || []).then(function(ok) {
+        if (!ok) { isSubmitting = false; resetBtn(); return; }
+        formData.confirmWarnings = true;
+        if (btn) btn.textContent = '⏳ กำลังบันทึกข้อมูล...';
+        resend();
+      });
+    }
+
     if (editId) {
+      const sendUpdate = function() {
       google.script.run
-        .withSuccessHandler(function() {
+        .withSuccessHandler(function(res) {
+          if (res && res.needConfirm) { askConfirm(res, sendUpdate); return; }
           isSubmitting = false;
           alert('✅ บันทึกการแก้ไขเรียบร้อย');
           cancelEdit();
@@ -1106,11 +1204,15 @@ function handleFormSubmit(e) {
           resetBtn();
         })
         .WASTE_updateRecord(editId, formData);
+      };
+      sendUpdate();
       return;
     }
 
+    const sendNew = function() {
     google.script.run
       .withSuccessHandler(function(res) {
+        if (res && res.needConfirm) { askConfirm(res, sendNew); return; }
         isSubmitting = false;
 
         if (res && res.success === false) {
@@ -1145,6 +1247,8 @@ function handleFormSubmit(e) {
         resetBtn();
       })
       .WASTE_saveData(formData);
+    };
+    sendNew();
   }).catch(function(err) {
     isSubmitting = false;
     console.error(err);
