@@ -913,7 +913,7 @@ function setup24hTimePicker(inputId) {
     hoursContainer.appendChild(div);
   }
 
-  for (let i = 0; i < 60; i += 5) {
+  for (let i = 0; i < 60; i++) {
     const val = String(i).padStart(2, '0');
     const div = document.createElement('div');
     div.className = 'time-option' + (val === '00' ? ' selected' : '');
