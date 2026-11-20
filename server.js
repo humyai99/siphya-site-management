@@ -28,6 +28,7 @@ app.use('/api/route', require('./routes/route'));
 app.use('/api/checklist', require('./routes/checklist'));
 app.use('/api/export', require('./routes/export'));
 app.use('/api/gas', require('./routes/gas'));
+app.use('/api/dplan-signed', require('./routes/dplan_signed')); // เปิดใบแผนประจำวันที่ PE/PM ลงนามแล้ว (ต้อง login)
 app.use('/api/transport-doc', require('./routes/transport_doc')); // เปิดไฟล์ใบเบิก (ต้อง login) // หน้าเว็บที่ย้ายมาจาก Apps Script (เช็คลิสต์ฉบับเต็ม)
 app.use('/api/route-plan-file', require('./routes/route_plan_file')); // เปิด PDF แผนเดินรถ / ไฟล์แนบ (admin)
 

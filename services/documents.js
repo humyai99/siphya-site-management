@@ -8,6 +8,7 @@
 //   เช็คลิสต์  checklist_pdf_archive   → public/uploads/checklist-pdf/
 //   NPO       npo_reports.pdf_path    → public/uploads/npo/
 //   ใบเบิก    transport_docs          → storage/transport-docs/ (เปิดผ่าน /api/transport-doc ต้อง login)
+//   แผนประจำวัน dplan_plans.signed_file → storage/dplan-signed/ (ใบที่ PE/PM เซ็นแล้ว เปิดผ่าน /api/dplan-signed ต้อง login)
 // ============================================================
 const { sitePool } = require('../db');
 const { UserError } = require('./common');
@@ -97,6 +98,27 @@ async function DOCS_list(req) {
       people: 'ผูกกับ ' + x.rows + ' แถว' + (x.original_name ? ' · ไฟล์ ' + x.original_name : ''),
       by: x.uploaded_by || '', created: x.created, status: 'current', statusLabel: 'แนบแล้ว',
       url: '/api/transport-doc/' + encodeURIComponent(x.project_code) + '/' + encodeURIComponent(x.doc_no), _sort: x.uploaded_at
+    }));
+  }
+
+  if (!system || system === 'dplan') {
+    const r = await sitePool.query(
+      `SELECT d.id, d.kind, d.project_code, ${fmt('d.plan_date')} AS plan_date, d.signed_complete, d.reviewer, d.reviewer_position,
+              ${fmt('d.signed_date')} AS signed_date, d.signed_uploaded_by, d.signed_original,
+              ${fmtTs('d.signed_uploaded_at')} AS created, d.signed_uploaded_at
+         FROM dplan_plans d
+        WHERE d.signed_file IS NOT NULL
+          AND ($1::text IS NULL OR d.project_code ILIKE $1 OR d.reviewer ILIKE $1 OR d.signed_uploaded_by ILIKE $1)
+          AND ($2::date IS NULL OR d.plan_date >= $2) AND ($3::date IS NULL OR d.plan_date <= $3)
+          AND ($4 <> 'old')
+        ORDER BY d.signed_uploaded_at DESC LIMIT ${LIMIT}`, [like, from, to, status]).catch(() => ({ rows: [] }));
+    r.rows.forEach(x => out.push({
+      system: 'dplan', systemLabel: 'แผนประจำวัน (ใบเซ็น PE/PM)',
+      title: (x.kind === 'vehicle' ? 'FM-GM-01-07 แผนรถเข้า-ออก' : 'FM-GM-01-03 เครื่องจักร'), project: x.project_code, docDate: x.plan_date,
+      people: (x.signed_complete ? 'สมบูรณ์' : 'ไม่สมบูรณ์') + ' · ' + (x.reviewer_position ? x.reviewer_position + ' ' : '') + (x.reviewer || '') +
+        (x.signed_date ? ' (' + x.signed_date + ')' : '') + (x.signed_original ? ' · ไฟล์ ' + x.signed_original : ''),
+      by: x.signed_uploaded_by || '', created: x.created, status: 'current', statusLabel: 'ลงนามแล้ว',
+      url: '/api/dplan-signed/' + x.id, _sort: x.signed_uploaded_at
     }));
   }
 

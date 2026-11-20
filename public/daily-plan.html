@@ -63,6 +63,9 @@
     .day.cur { outline:2px solid var(--ink); }
     .day.s-ok { background:#E3F5EC; border-color:#BFE6D2; } .day.s-bad { background:#FDECEC; border-color:#F2C4C4; }
     .day.s-draft { background:#FFF4D6; border-color:#F0DCA0; } .day.s-ex { background:var(--field); color:var(--faint); }
+    .day.s-pend { background:#E8F0FD; border-color:#C5D6F5; }
+    .sgn { margin-top:8px; font-size:13px; line-height:1.8; }
+    .sgn .opt { margin-right:14px; } .sgn .ok { color:var(--green); font-weight:700; } .sgn .bad { color:var(--red); font-weight:700; }
     /* KPI */
     .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin:12px 0 4px; }
     .stat { background:var(--field); border-radius:12px; padding:12px 14px; }
@@ -89,7 +92,7 @@
     <div class="wrap">
       <a class="back" id="backLink" href="/">← กลับหน้าหลัก</a>
       <h1>แผนรถเข้า-ออก / เครื่องจักรประจำวัน</h1>
-      <p>FM-GM-01-07 ตารางสรุปแผนรถเข้า-ออกหน่วยงาน · FM-GM-01-03 ตารางการใช้เครื่องจักร — ส่งก่อน 16:00 น. ของวันทำงานก่อนวันแผน · ระบบตรวจข้อมูลครบถ้วนตอนกดส่ง และคิด KPI ให้อัตโนมัติ</p>
+      <p>FM-GM-01-07 ตารางสรุปแผนรถเข้า-ออกหน่วยงาน · FM-GM-01-03 ตารางการใช้เครื่องจักร — ส่งก่อน 16:00 น. ของวันทำงานก่อนวันแผน · ธุรการกรอก + ส่งแผน → พิมพ์ให้ PE/PM ตรวจและเซ็น → ส่งใบเซ็นกลับเข้าระบบ เพื่อนับ KPI</p>
       <div class="tabs">
         <button class="tab on" data-tab="plan">กรอกแผน</button>
         <button class="tab" data-tab="kpi">KPI</button>
@@ -183,7 +186,7 @@
           <label class="note">ถึง <input type="month" id="kTo"></label>
           <label class="note"><input type="checkbox" id="kAll"> ทุกโครงการ</label>
         </div>
-        <div class="note" style="margin-top:6px;">KPI = (จำนวนแผนที่ข้อมูลครบถ้วน ÷ จำนวนแผนทั้งหมดที่จัดทำ) × 100 · นับเฉพาะแผนที่กดส่งแล้ว · ตรวจตอนส่งครั้งแรก (แก้ไข/เพิ่มรถทีหลังไม่นับ) · ถ้าผู้ตรวจปรับเป็นไม่สมบูรณ์ ใช้ผลของผู้ตรวจ · แผนที่ติ๊ก "ไม่นับ" ไม่อยู่ในตัวหาร · "ส่งทัน 16:00" แสดงประกอบ ไม่อยู่ในสูตร</div>
+        <div class="note" style="margin-top:6px;">KPI = (จำนวนแผนที่ข้อมูลครบถ้วน ÷ จำนวนแผนทั้งหมดที่จัดทำ) × 100 · นับเฉพาะแผนที่กดส่งแล้ว<b>และส่งใบที่ PE/PM เซ็นแล้ว</b> · ครบถ้วน/ไม่ครบ ยึดตามที่ PE/PM ติ๊กในใบ · ยังไม่ส่งใบเซ็น = "รอใบเซ็น" ยังไม่อยู่ในตัวหาร · แผนที่ติ๊ก "ไม่นับ" ไม่อยู่ในตัวหาร · "ส่งทัน 16:00" แสดงประกอบ ไม่อยู่ในสูตร</div>
         <div id="kpiBody"></div>
       </div>
     </div>
@@ -274,8 +277,8 @@
   function applyKind() {
     document.querySelectorAll('.m-only').forEach(function (el) { el.classList.toggle('hidden', S.kind !== 'machine'); });
     $('itemsHelp').textContent = S.kind === 'vehicle'
-      ? '1 แถว = รถ 1 ประเภท/คัน × 1 ช่วงเวลา · ต้องมี ทะเบียนรถ · ประเภทรถ · จุดกอง/จุดลงของ · เวลา ครบทุกแถว จึงนับว่า "แผนสมบูรณ์" (ช่องที่ยังว่างจะเป็นสีแดง — บันทึก/ส่งได้ แต่ KPI จะนับว่าไม่ครบ)'
-      : '1 แถว = เครื่องจักร 1 ตัว × 1 ช่วงเวลา · ช่วง OT (17:00 น. –) เป็นของ "วันที่ช่วง OT" ส่วน 07:00–17:00 เป็นของวันที่ของแผน · ต้องมี เครื่องจักร · ช่วงเวลา · งานที่ทำ · ผู้ขอใช้ (ลิฟท์ไม่ต้องมีผู้ขอใช้) ครบทุกแถว';
+      ? '1 แถว = รถ 1 ประเภท/คัน × 1 ช่วงเวลา · ต้องมี ทะเบียนรถ · ประเภทรถ · จุดกอง/จุดลงของ · เวลา ครบทุกแถว (ช่องที่ยังว่างจะเป็นสีแดง — บันทึก/ส่งได้ · ผลใน KPI ยึดตามที่ PE/PM ติ๊กในใบเซ็น)'
+      : '1 แถว = เครื่องจักร 1 ตัว × 1 ช่วงเวลา · ช่วง OT (17:00 น. –) เป็นของ "วันที่ช่วง OT" ส่วน 07:00–17:00 เป็นของวันที่ของแผน · ต้องมี เครื่องจักร · ช่วงเวลา · งานที่ทำ · ผู้ขอใช้ (ลิฟท์ไม่ต้องมีผู้ขอใช้) ครบทุกแถว · ผลใน KPI ยึดตามที่ PE/PM ติ๊กในใบเซ็น';
   }
   $('projSel').onchange = function () { if (!confirmLeave()) { $('projSel').value = S.code; return; } S.code = this.value; remember(); refreshTab(); };
   $('planDate').onchange = function () { if (!confirmLeave()) return; $('monthSel').value = this.value.slice(0, 7); loadPlan(); };
@@ -304,7 +307,8 @@
       h.push('<span class="pill blue">ส่งแล้ว ' + esc(p.submittedText) + ' โดย ' + esc(p.submittedBy) + '</span>');
       h.push(p.onTime ? '<span class="pill ok">ทันกำหนด (ก่อน 16:00 น. ' + thDateShort(p.deadlineDate) + ')</span>'
         : '<span class="pill warn">ส่งหลังกำหนด 16:00 น. ' + thDateShort(p.deadlineDate) + '</span>');
-      h.push(p.complete ? '<span class="pill ok">✓ แผนสมบูรณ์</span>' : '<span class="pill bad">✗ แผนไม่สมบูรณ์' + (p.reviewIncomplete && p.systemComplete ? ' (ผู้ตรวจปรับ)' : '') + '</span>');
+      h.push(!p.signed ? '<span class="pill warn">⏳ รอใบเซ็น PE/PM (ยังไม่นับใน KPI)</span>'
+        : p.complete ? '<span class="pill ok">✓ แผนสมบูรณ์ (ตาม PE/PM)</span>' : '<span class="pill bad">✗ แผนไม่สมบูรณ์ (ตาม PE/PM)</span>');
       if (p.excluded) h.push('<span class="pill">ไม่นับ KPI — ' + esc(p.excludeReason) + '</span>');
       if (p.editCount) h.push('<span class="pill">แก้ไขหลังส่ง ' + p.editCount + ' ครั้ง (ล่าสุด ' + esc(p.updatedText) + ' ' + esc(p.updatedBy) + ')</span>');
     } else if (p.status === 'draft') {
@@ -316,7 +320,7 @@
     renderReview();
     var miss = p.status === 'submitted' && !p.systemComplete ? (p.missing || []) : [];
     $('missBox').classList.toggle('hidden', !miss.length);
-    $('missBox').innerHTML = miss.length ? '<b>ข้อมูลที่ขาด ณ ตอนส่ง:</b><br>' + miss.map(function (m) {
+    $('missBox').innerHTML = miss.length ? '<b>ระบบพบช่องที่ยังว่าง ณ ตอนส่ง</b> <span class="note">(ตัวช่วยเท่านั้น — ผลใน KPI ยึดตามที่ PE/PM ติ๊กในใบ)</span><br>' + miss.map(function (m) {
       return 'แถว ' + m.idx + (m.label ? ' (' + esc(m.label) + ')' : '') + ': ' + m.fields.map(function (f) { return META.fieldNames[f]; }).join(', ');
     }).join('<br>') : '';
     $('exRow').classList.toggle('hidden', p.status !== 'submitted');
@@ -330,50 +334,96 @@
     $('btnDel').classList.toggle('hidden', !p.id || (p.status === 'submitted' && !META.isAdmin));
   }
 
-  // ---------- ผลตรวจทานของหัวหน้างาน / ผู้ตรวจ ----------
+  // ---------- ใบที่ PE/PM ตรวจ + ลงนามแล้ว ----------
   function reviewFieldList() {
     return S.kind === 'vehicle'
       ? [['plate', 'ทะเบียนรถ'], ['type', 'ประเภทรถ'], ['location', 'จุดกอง / จุดลงของ'], ['time', 'เวลาลงของ']]
       : [['machine', 'เครื่องจักร'], ['mtime', 'ช่วงเวลา'], ['job', 'งานที่ทำ'], ['requester', 'ผู้ขอใช้']];
   }
   var revEditing = false;
+  function todayIso() { var d = new Date(Date.now() + 7 * 3600 * 1000); return d.toISOString().slice(0, 10); }
   function renderReview() {
     var p = S.plan, box = $('revBox');
     box.classList.toggle('hidden', p.status !== 'submitted');
     if (p.status !== 'submitted') return;
-    var head = '<b style="font-size:13.5px;">ผลตรวจทานของหัวหน้างาน / ผู้ตรวจ</b> <span class="note">— กรอกตามที่ผู้ตรวจติ๊ก/เขียนในใบที่พิมพ์ (ปรับได้เฉพาะเป็น "ไม่สมบูรณ์")</span>';
-    if (p.reviewIncomplete && !revEditing) {
-      box.innerHTML = head + '<div class="miss" style="margin-top:6px;">✗ ผู้ตรวจ <b>' + esc(p.reviewer) + '</b>' + (p.reviewerPosition ? ' (' + esc(p.reviewerPosition) + ')' : '') +
-        ' ปรับเป็น "แผนไม่สมบูรณ์" เมื่อ ' + esc(thDateShort(p.reviewedDate)) +
-        ((p.reviewFields || []).length ? '<br>ข้อมูลที่ขาด / ไม่ชัด: ' + p.reviewFields.map(function (f) { return META.fieldNames[f]; }).join(', ') : '') +
-        (p.reviewNote ? '<br>รายละเอียด: ' + esc(p.reviewNote) : '') + '<br><span class="note">บันทึกโดย ' + esc(p.reviewEnteredBy || '') + '</span></div>' +
-        '<div class="row" style="margin-top:6px;"><button class="btn2" id="revEdit">แก้ไขผลตรวจ</button><button class="btn2 danger" id="revUndo">ยกเลิกการปรับ (กลับเป็นผลของระบบ)</button></div>';
-    } else if (!revEditing) {
-      box.innerHTML = head + '<div class="row" style="margin-top:6px;"><span class="note grow">ใช้ผลตรวจของระบบ' + (p.systemComplete ? ' (สมบูรณ์)' : ' (ไม่สมบูรณ์ — ช่องที่ขาดอยู่ด้านบน)') + '</span>' +
-        (p.systemComplete ? '<button class="btn2 danger" id="revOpen">ผู้ตรวจปรับเป็นไม่สมบูรณ์</button>' : '') + '</div>';
-    } else {
-      var sel = p.reviewFields || [];
-      box.innerHTML = head + '<div style="margin-top:8px;font-size:13px;">ข้อมูลที่ขาด / ไม่ชัด : ' +
-        reviewFieldList().map(function (f) { return '<label style="margin-right:12px;"><input type="checkbox" class="revF" value="' + f[0] + '"' + (sel.indexOf(f[0]) >= 0 ? ' checked' : '') + '> ' + f[1] + '</label>'; }).join('') + '</div>' +
-        '<div class="row" style="margin-top:8px;align-items:flex-end;">' +
-        '<label class="f grow">รายละเอียด (' + (S.kind === 'vehicle' ? 'คัน' : 'รายการ') + 'ที่ข้อมูลไม่ครบ / ไม่ชัด)<input type="text" id="revNote" value="' + esc(p.reviewNote || '') + '" placeholder="เช่น TC.1 ช่วง 08–10 น. งานที่ทำเขียนไม่ชัด"></label>' +
-        '<label class="f">ผู้ตรวจ<input type="text" id="revName" value="' + esc(p.reviewer || $('pmName').value || '') + '" placeholder="ชื่อตามที่ลงในใบ"></label>' +
-        '<label class="f" style="width:120px;">ตำแหน่ง<input type="text" id="revPos" value="' + esc(p.reviewerPosition || '') + '" placeholder="เช่น PE"></label></div>' +
-        '<div class="row" style="margin-top:8px;"><div class="grow"></div><button class="btn2" id="revCancel">ยกเลิก</button><button class="btn1 warn" id="revSave" style="background:var(--red)">บันทึก: แผนไม่สมบูรณ์</button></div>';
+    var head = '<b style="font-size:13.5px;">📎 ใบที่ PE/PM ตรวจ + ลงนามแล้ว</b> <span class="note">— พิมพ์ฟอร์ม → ให้ PE/PM ติ๊กช่องตรวจสอบและเซ็น → สแกน/ถ่ายรูปส่งกลับที่นี่ (KPI นับเมื่อส่งใบเซ็นแล้ว)</span>';
+    if (p.signed && !revEditing) {
+      box.innerHTML = head + '<div class="sgn">' +
+        (p.complete ? '<span class="ok">✓ แผนสมบูรณ์</span>' : '<span class="bad">✗ แผนไม่สมบูรณ์</span>') +
+        ' — ตาม <b>' + esc(p.reviewer) + '</b>' + (p.reviewerPosition ? ' (' + esc(p.reviewerPosition) + ')' : '') + ' ลงนามวันที่ ' + esc(thDateShort(p.signedDate)) +
+        (!p.complete && (p.reviewFields || []).length ? '<br>ข้อมูลที่ขาด / ไม่ชัด: ' + p.reviewFields.map(function (f) { return META.fieldNames[f]; }).join(', ') : '') +
+        (!p.complete && p.reviewNote ? '<br>รายละเอียด: ' + esc(p.reviewNote) : '') +
+        '<br><a class="lnk" href="/api/dplan-signed/' + p.id + '" target="_blank">📄 เปิดใบเซ็น' + (p.signedOriginal ? ' (' + esc(p.signedOriginal) + ')' : '') + '</a>' +
+        ' <span class="note">· ส่งโดย ' + esc(p.signedBy || '') + ' ' + esc(p.signedText || '') + '</span></div>' +
+        '<div class="row" style="margin-top:6px;"><button class="btn2" id="sgEdit">ส่งไฟล์ใหม่ / แก้ผล</button>' +
+        (META.isAdmin ? '<button class="btn2 danger" id="sgDel">ลบใบเซ็น</button>' : '') + '</div>';
+      return;
     }
+    var sel = p.reviewFields || [], had = p.signed;
+    var res = had ? (p.complete ? 'ok' : 'bad') : '';
+    box.innerHTML = head +
+      '<div class="sgn">' +
+      '<div><b>ไฟล์ใบที่เซ็นแล้ว</b> (PDF หรือรูป) ' + (had ? '<span class="note">— ไม่เลือกไฟล์ = ใช้ไฟล์เดิม</span>' : '') +
+        '<br><input type="file" id="sgFile" accept="application/pdf,image/jpeg,image/png"></div>' +
+      '<div style="margin-top:6px;"><b>ผลตรวจตามที่ PE/PM ติ๊กในใบ</b><br>' +
+        '<label class="opt"><input type="radio" name="sgRes" value="ok"' + (res === 'ok' ? ' checked' : '') + '> ✓ แผนสมบูรณ์</label>' +
+        '<label class="opt"><input type="radio" name="sgRes" value="bad"' + (res === 'bad' ? ' checked' : '') + '> ✗ แผนไม่สมบูรณ์</label></div>' +
+      '<div id="sgBadBox" class="' + (res === 'bad' ? '' : 'hidden') + '" style="margin-top:4px;">ข้อมูลที่ขาด / ไม่ชัด : ' +
+        reviewFieldList().map(function (f) { return '<label class="opt"><input type="checkbox" class="revF" value="' + f[0] + '"' + (sel.indexOf(f[0]) >= 0 ? ' checked' : '') + '> ' + f[1] + '</label>'; }).join('') +
+        '<label class="f" style="margin-top:4px;">รายละเอียด (ตามที่เขียนในใบ)<input type="text" id="revNote" value="' + esc(p.reviewNote || '') + '" placeholder="เช่น TC.1 ช่วง 08–10 น. งานที่ทำเขียนไม่ชัด"></label></div>' +
+      '<div class="row" style="margin-top:8px;align-items:flex-end;">' +
+        '<label class="f grow">PE/PM ที่ลงนาม<input type="text" id="revName" value="' + esc(p.reviewer || $('pmName').value || '') + '" placeholder="ชื่อตามที่ลงในใบ"></label>' +
+        '<label class="f" style="width:120px;">ตำแหน่ง<input type="text" id="revPos" value="' + esc(p.reviewerPosition || '') + '" placeholder="เช่น PE"></label>' +
+        '<label class="f">วันที่ลงนาม<input type="date" id="sgDate" value="' + esc(p.signedDate || todayIso()) + '"></label></div>' +
+      '<div class="row" style="margin-top:8px;"><span class="note grow" id="sgMsg"></span>' +
+        (had ? '<button class="btn2" id="sgCancel">ยกเลิก</button>' : '') +
+        '<button class="btn1" id="sgSave">📤 ส่งใบเซ็น</button></div></div>';
   }
+  // รูปจากมือถือ: ย่อเหลือด้านยาว 2000px (JPEG) ก่อนส่ง · PDF ส่งตามเดิม
+  function readSigned(file) {
+    return new Promise(function (resolve, reject) {
+      var rd = new FileReader();
+      rd.onerror = function () { reject(new Error('อ่านไฟล์ไม่สำเร็จ')); };
+      rd.onload = function () {
+        if (file.type === 'application/pdf') return resolve(rd.result);
+        var img = new Image();
+        img.onerror = function () { reject(new Error('เปิดรูปไม่สำเร็จ')); };
+        img.onload = function () {
+          var k = Math.min(1, 2000 / Math.max(img.width, img.height));
+          var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        };
+        img.src = rd.result;
+      };
+      rd.readAsDataURL(file);
+    });
+  }
+  $('revBox').addEventListener('change', function (e) {
+    if (e.target.name === 'sgRes') $('sgBadBox').classList.toggle('hidden', e.target.value !== 'bad');
+  });
   $('revBox').addEventListener('click', function (e) {
     var id = e.target.id;
-    if (id === 'revOpen' || id === 'revEdit') { revEditing = true; renderReview(); }
-    else if (id === 'revCancel') { revEditing = false; renderReview(); }
-    else if (id === 'revUndo') {
-      if (!confirm('ยกเลิกผลตรวจของผู้ตรวจ แล้วกลับไปใช้ผลของระบบ?')) return;
-      call('DPLAN_review', { id: S.plan.id, incomplete: false }).then(function () { revEditing = false; loadPlan(); }).catch(function (er) { alert(er.message); });
-    } else if (id === 'revSave') {
-      var fields = Array.prototype.map.call(document.querySelectorAll('.revF:checked'), function (x) { return x.value; });
-      call('DPLAN_review', { id: S.plan.id, incomplete: true, fields: fields, note: $('revNote').value, reviewer: $('revName').value, position: $('revPos').value })
-        .then(function () { revEditing = false; loadPlan(); setTimeout(function () { msg('saveMsg', 'บันทึกผลตรวจแล้ว — แผนนี้นับเป็น "ไม่สมบูรณ์" ใน KPI', 'ok'); }, 400); })
-        .catch(function (er) { alert(er.message); });
+    if (id === 'sgEdit') { revEditing = true; renderReview(); }
+    else if (id === 'sgCancel') { revEditing = false; renderReview(); }
+    else if (id === 'sgDel') {
+      if (!confirm('ลบใบเซ็นของแผนนี้? แผนจะกลับเป็น "รอใบเซ็น" และไม่นับใน KPI จนกว่าจะส่งใหม่')) return;
+      call('DPLAN_removeSigned', S.plan.id).then(function () { revEditing = false; loadPlan(); }).catch(function (er) { alert(er.message); });
+    } else if (id === 'sgSave') {
+      var r = document.querySelector('input[name="sgRes"]:checked');
+      var file = $('sgFile').files[0];
+      if (!file && !S.plan.signed) { $('sgMsg').textContent = 'เลือกไฟล์ใบที่ PE/PM เซ็นแล้วก่อน'; return; }
+      if (!r) { $('sgMsg').textContent = 'เลือกผลตรวจตามที่ PE/PM ติ๊กในใบ'; return; }
+      var req = { id: S.plan.id, complete: r.value === 'ok', reviewer: $('revName').value, position: $('revPos').value, signedDate: $('sgDate').value,
+        fields: Array.prototype.map.call(document.querySelectorAll('.revF:checked'), function (x) { return x.value; }), note: $('revNote').value };
+      var btn = e.target; btn.disabled = true; $('sgMsg').textContent = 'กำลังส่ง...';
+      (file ? readSigned(file) : Promise.resolve(null)).then(function (dataUrl) {
+        if (dataUrl) { req.dataUrl = dataUrl; req.fileName = file.name; }
+        return call('DPLAN_uploadSigned', req);
+      }).then(function () {
+        revEditing = false; loadPlan();
+        setTimeout(function () { msg('saveMsg', '✓ ส่งใบเซ็นแล้ว — แผนนี้นับใน KPI เป็น "' + (req.complete ? 'สมบูรณ์' : 'ไม่สมบูรณ์') + '"', 'ok'); }, 400);
+      }).catch(function (er) { btn.disabled = false; $('sgMsg').textContent = er.message; });
     }
   });
 
@@ -532,7 +582,7 @@
         dirty = false;
         loadPlan();
         setTimeout(function () {
-          msg('saveMsg', r.submitted ? (r.complete ? '✓ ส่งแผนแล้ว — ข้อมูลครบถ้วน' : 'ส่งแผนแล้ว — ข้อมูลไม่ครบ ' + r.missing.length + ' แถว (นับเป็นแผนไม่สมบูรณ์)') : '✓ บันทึกแล้ว', r.submitted && !r.complete ? 'err' : 'ok');
+          msg('saveMsg', r.submitted ? (r.complete ? '✓ ส่งแผนแล้ว — พิมพ์ฟอร์มให้ PE/PM ตรวจและเซ็น แล้วส่งใบเซ็นกลับเข้าระบบ' : 'ส่งแผนแล้ว — ระบบพบช่องที่ยังว่าง ' + r.missing.length + ' แถว (ดูด้านบน) · พิมพ์ฟอร์มให้ PE/PM ตรวจและเซ็น แล้วส่งใบเซ็นกลับเข้าระบบ') : '✓ บันทึกแล้ว', r.submitted && !r.complete ? 'err' : 'ok');
         }, 400);
       })
       .catch(function (e) { msg('saveMsg', e.message, 'err'); })
@@ -559,6 +609,7 @@
         if (p) {
           if (p.status !== 'submitted') { cls = 's-draft'; sub = 'ร่าง'; }
           else if (p.excluded) { cls = 's-ex'; sub = 'ไม่นับ'; }
+          else if (!p.signed) { cls = 's-pend'; sub = 'รอเซ็น'; }
           else { cls = p.complete ? 's-ok' : 's-bad'; sub = p.complete ? 'ครบ' : 'ไม่ครบ'; }
         } else if (dowOf(ds) === 0) { sub = 'อา.'; } else { sub = '-'; }
         h += '<div class="day ' + cls + (ds === $('planDate').value ? ' cur' : '') + '" data-d="' + ds + '"><b>' + d + '</b>' + sub + '</div>';
@@ -576,7 +627,7 @@
     $('adminDelTbl').innerHTML = '<thead><tr><th style="width:30px"></th><th style="text-align:left">วันที่ของแผน</th><th style="text-align:center">สถานะ</th><th style="text-align:center">ผลตรวจ</th><th style="text-align:center">รายการ</th><th style="text-align:left">ส่งโดย / เวลา</th></tr></thead><tbody>' +
       (list.map(function (p) {
         var st = p.status === 'submitted' ? (p.excluded ? 'ส่งแล้ว · ไม่นับ' : 'ส่งแล้ว') : 'ร่าง';
-        var res = p.status !== 'submitted' ? '-' : p.complete ? '<span style="color:var(--green)">ครบ</span>' : '<span style="color:var(--red)">ไม่ครบ</span>';
+        var res = p.status !== 'submitted' ? '-' : !p.signed ? 'รอใบเซ็น' : p.complete ? '<span style="color:var(--green)">ครบ</span>' : '<span style="color:var(--red)">ไม่ครบ</span>';
         return '<tr><td><input type="checkbox" class="delChk" value="' + p.id + '"></td><td style="text-align:left">' + esc(thDate(p.planDate)) + ' (' + DOW_TH[dowOf(p.planDate)] + ')</td><td style="text-align:center">' + st + '</td><td style="text-align:center">' + res + '</td><td style="text-align:center">' + p.itemCount + '</td><td style="text-align:left">' + esc(p.submittedBy ? p.submittedBy + ' ' + p.submittedText : '-') + '</td></tr>';
       }).join('') || '<tr><td colspan="6" class="empty">ไม่มีแผนในเดือนนี้</td></tr>') + '</tbody>';
   }
@@ -696,28 +747,20 @@
         });
       });
     }
-    var box = function (on) { return on ? '☑' : '☐'; };
-    var submitted = p.status === 'submitted', miss = submitted ? (p.missing || []) : [];
-    var mf = {}; miss.forEach(function (m) { m.fields.forEach(function (x) { mf[x] = 1; }); });
-    if (submitted && p.reviewIncomplete) (p.reviewFields || []).forEach(function (x) { mf[x] = 1; });
+    // ส่วนตรวจสอบเว้นว่างทั้งหมด — PE/PM ติ๊กและเขียนเองในใบที่พิมพ์ แล้วธุรการส่งใบเซ็นกลับเข้าระบบ
+    var B = '☐';
     var checks = v
-      ? [['plate', 'ระบุทะเบียนรถครบทุกคัน'], ['type', 'ระบุประเภทรถครบทุกคัน'], ['location', 'ระบุจุดกอง / จุดลงของครบและชัดเจนทุกคัน'], ['time', 'ระบุเวลาลงของครบและชัดเจนทุกคัน']]
-      : [['machine', 'ระบุเครื่องจักรครบทุกรายการ'], ['mtime', 'ระบุช่วงเวลาครบและชัดเจนทุกรายการ'], ['job', 'ระบุงานที่ทำครบทุกรายการ'], ['requester', 'ระบุผู้ขอใช้ครบทุกรายการ']];
-    // ช่อง "ข้อมูลที่ขาด / ไม่ชัด" ตามแบบฟอร์ม
-    var missBoxes = v
-      ? [['plate', 'ทะเบียนรถ'], ['type', 'ประเภทรถ'], ['location', 'จุดกอง / จุดลงของ'], ['time', 'เวลาลงของ']]
-      : [['machine', 'เครื่องจักร'], ['mtime', 'ช่วงเวลา'], ['job', 'งานที่ทำ'], ['requester', 'ผู้ขอใช้']];
-    var check = '<div class="chk"><b>ส่วนตรวจสอบความสมบูรณ์ของแผน</b> (ระบบตรวจตอนธุรการกดส่งแผน · หัวหน้างาน / ผู้ตรวจ ตรวจทานและลงนาม)<div class="g">' +
-      checks.map(function (c) { return '<span>' + box(submitted && !mf[c[0]]) + ' ' + c[1] + '</span>'; }).join('') + '</div>' +
-      '<div>เวลาที่ส่งแผน ' + (submitted ? esc(p.submittedText) + ' น.' : '...............') + ' &nbsp; ' + box(submitted && p.onTime) + ' ทันกำหนด (ก่อน 16:00 น. ' + esc(thDateShort(p.deadlineDate)) + ') &nbsp; ' + box(submitted && !p.onTime) + ' ไม่ทัน' +
-      ' &nbsp; ' + box(p.excluded) + ' ไม่นับ : ' + (p.excluded ? esc(p.excludeReason) : 'ผู้ขอแจ้งหลัง 16:00 น. / ผู้ขอไม่ให้ข้อมูล') + '</div>' +
-      '<div>ผลการตรวจ : ' + box(submitted && p.complete) + ' แผนสมบูรณ์ &nbsp; ' + box(submitted && !p.complete) + ' แผนไม่สมบูรณ์ &nbsp;&nbsp; ข้อมูลที่ขาด / ไม่ชัด : ' +
-      missBoxes.map(function (c) { return box(!!mf[c[0]]) + ' ' + c[1]; }).join(' &nbsp; ') + '</div>' +
-      '<div>รายละเอียด (' + (v ? 'คัน' : 'รายการ') + 'ที่ข้อมูลไม่ครบ) ' + (miss.length || (p.reviewIncomplete && p.reviewNote) ? miss.map(function (m) { return 'แถว ' + m.idx + ' ' + esc(m.label) + ': ' + m.fields.map(function (x) { return META.fieldNames[x]; }).join(', '); })
-        .concat(p.reviewIncomplete && p.reviewNote ? ['ผู้ตรวจ: ' + esc(p.reviewNote)] : []).join(' · ') : '..............................................................') + '</div>' +
-      '<div style="margin-top:6px">ผู้ตรวจ ' + (p.reviewIncomplete ? '<u>&nbsp;' + esc(p.reviewer) + '&nbsp;</u>' : '........................................................') +
-      ' &nbsp; ตำแหน่ง ' + (p.reviewIncomplete && p.reviewerPosition ? '<u>&nbsp;' + esc(p.reviewerPosition) + '&nbsp;</u>' : '....................................') +
-      ' &nbsp; วันที่ตรวจ ' + (p.reviewIncomplete ? esc(thDateShort(p.reviewedDate)) : '......... / ......... / .........') + '</div></div>';
+      ? ['ระบุทะเบียนรถครบทุกคัน', 'ระบุประเภทรถครบทุกคัน', 'ระบุจุดกอง / จุดลงของครบและชัดเจนทุกคัน', 'ระบุเวลาลงของครบและชัดเจนทุกคัน']
+      : ['ระบุเครื่องจักรครบทุกรายการ', 'ระบุช่วงเวลาครบและชัดเจนทุกรายการ', 'ระบุงานที่ทำครบทุกรายการ', 'ระบุผู้ขอใช้ครบทุกรายการ'];
+    var missBoxes = v ? ['ทะเบียนรถ', 'ประเภทรถ', 'จุดกอง / จุดลงของ', 'เวลาลงของ'] : ['เครื่องจักร', 'ช่วงเวลา', 'งานที่ทำ', 'ผู้ขอใช้'];
+    var check = '<div class="chk"><b>ส่วนตรวจสอบความสมบูรณ์ของแผน</b> (PE/PM ตรวจ ติ๊ก และลงนาม)<div class="g">' +
+      checks.map(function (c) { return '<span>' + B + ' ' + c + '</span>'; }).join('') + '</div>' +
+      '<div>เวลาที่ส่งแผน ............... น. &nbsp; ' + B + ' ทันกำหนด (ก่อน 16:00 น. ' + esc(thDateShort(p.deadlineDate)) + ') &nbsp; ' + B + ' ไม่ทัน' +
+      ' &nbsp; ' + B + ' ไม่นับ : ผู้ขอแจ้งหลัง 16:00 น. / ผู้ขอไม่ให้ข้อมูล</div>' +
+      '<div>ผลการตรวจ : ' + B + ' แผนสมบูรณ์ &nbsp; ' + B + ' แผนไม่สมบูรณ์ &nbsp;&nbsp; ข้อมูลที่ขาด / ไม่ชัด : ' +
+      missBoxes.map(function (c) { return B + ' ' + c; }).join(' &nbsp; ') + '</div>' +
+      '<div>รายละเอียด (' + (v ? 'คัน' : 'รายการ') + 'ที่ข้อมูลไม่ครบ) ......................................................................................................................</div>' +
+      '<div style="margin-top:6px">ผู้ตรวจ ........................................................ &nbsp; ตำแหน่ง .................................... &nbsp; วันที่ตรวจ ......... / ......... / .........</div></div>';
     return '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><title>' + esc(f.formNo + ' ' + S.projectName + ' ' + p.planDate) + '</title>' +
       '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"><style>' +
       '@page{size:A4 landscape;margin:8mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:Sarabun,sans-serif;font-size:10.5px;color:#000;margin:0}' +
@@ -758,15 +801,16 @@
         if (!all) { h += '<div class="note">ยังไม่มีแผนในช่วงนี้</div>'; return; }
         h += '<div class="stats">' +
           '<div class="stat ' + (all.pct == null ? '' : all.pct >= 90 ? 'hl' : 'low') + '"><b>' + (all.pct == null ? '-' : all.pct + '%') + '</b><span>KPI ความครบถ้วน</span></div>' +
-          '<div class="stat"><b>' + all.complete + ' / ' + all.made + '</b><span>แผนครบถ้วน / แผนที่จัดทำ</span></div>' +
+          '<div class="stat"><b>' + all.complete + ' / ' + all.made + '</b><span>แผนครบถ้วน / แผนที่จัดทำ (ส่งใบเซ็นแล้ว)</span></div>' +
+          '<div class="stat ' + (all.pending ? 'low' : '') + '"><b>' + all.pending + '</b><span>รอใบเซ็น PE/PM (ยังไม่นับ)</span></div>' +
           '<div class="stat"><b>' + all.onTime + '</b><span>ส่งทัน 16:00 (ไม่ทัน ' + all.late + ')</span></div>' +
           '<div class="stat"><b>' + all.excluded + '</b><span>ไม่นับ</span></div>' +
           '<div class="stat"><b>' + all.drafts + '</b><span>ร่างที่ยังไม่ส่ง</span></div></div>';
         var projs = r.rows.filter(function (x) { return x.kind === k && x.code && !x.month; });
-        h += '<div class="tbl"><table class="rep"><thead><tr><th>โครงการ / เดือน</th><th>จัดทำ</th><th>ครบถ้วน</th><th>KPI %</th><th>ส่งทัน 16:00</th><th>ไม่นับ</th><th>ร่าง</th></tr></thead><tbody>';
+        h += '<div class="tbl"><table class="rep"><thead><tr><th>โครงการ / เดือน</th><th>จัดทำ</th><th>ครบถ้วน</th><th>KPI %</th><th>รอใบเซ็น</th><th>ส่งทัน 16:00</th><th>ไม่นับ</th><th>ร่าง</th></tr></thead><tbody>';
         projs.forEach(function (p) {
           var line = function (x, sub) {
-            return '<tr' + (sub ? ' class="sub"' : '') + '><td>' + (sub ? esc(MONTH_TH[+x.month.slice(5) - 1] + ' ' + (+x.month.slice(0, 4) + 543)) : '<b>' + esc(x.projectName) + '</b>') + '</td><td>' + x.made + '</td><td>' + x.complete + '</td><td><b>' + (x.pct == null ? '-' : x.pct + '%') + '</b></td><td>' + x.onTime + '</td><td>' + x.excluded + '</td><td>' + x.drafts + '</td></tr>';
+            return '<tr' + (sub ? ' class="sub"' : '') + '><td>' + (sub ? esc(MONTH_TH[+x.month.slice(5) - 1] + ' ' + (+x.month.slice(0, 4) + 543)) : '<b>' + esc(x.projectName) + '</b>') + '</td><td>' + x.made + '</td><td>' + x.complete + '</td><td><b>' + (x.pct == null ? '-' : x.pct + '%') + '</b></td><td>' + x.pending + '</td><td>' + x.onTime + '</td><td>' + x.excluded + '</td><td>' + x.drafts + '</td></tr>';
           };
           h += line(p, false);
           r.rows.filter(function (x) { return x.kind === k && x.code === p.code && x.month; }).sort(function (a, b) { return a.month < b.month ? -1 : 1; })
@@ -775,8 +819,10 @@
         h += '</tbody></table></div>';
         var fc = Object.keys(r.fieldCount).filter(function (x) { return x.indexOf(k + '|') === 0; });
         if (fc.length) h += '<div class="note" style="margin-top:8px;">ข้อมูลที่ขาดบ่อย: ' + fc.sort(function (a, b) { return r.fieldCount[b] - r.fieldCount[a]; }).map(function (x) { return META.fieldNames[x.split('|')[1]] + ' ' + r.fieldCount[x] + ' แผน'; }).join(' · ') + '</div>';
-        var revN = r.incomplete.filter(function (x) { return x.kind === k && x.reviewIncomplete && !x.missing.length; }).length;
-        if (revN) h += '<div class="note" style="margin-top:4px;">ในจำนวนนี้ ' + revN + ' แผน ระบบตรวจว่าครบ แต่ผู้ตรวจปรับเป็นไม่สมบูรณ์</div>';
+        var pend = r.pending.filter(function (x) { return x.kind === k; });
+        if (pend.length) h += '<div class="note" style="margin-top:4px;">รอใบเซ็น: ' + pend.map(function (x) {
+          return '<a class="lnk" data-open="' + k + '|' + x.code + '|' + x.planDate + '">' + esc(x.code + ' ' + thDateShort(x.planDate)) + '</a>';
+        }).join(' · ') + '</div>';
         var inc = r.incomplete.filter(function (x) { return x.kind === k; });
         if (inc.length) h += '<div class="note" style="margin-top:4px;">แผนที่ไม่ครบ: ' + inc.map(function (x) {
           return '<a class="lnk" data-open="' + k + '|' + x.code + '|' + x.planDate + '">' + esc(x.code + ' ' + thDateShort(x.planDate)) + '</a>';

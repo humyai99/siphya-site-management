@@ -12,21 +12,31 @@
 //   DPLAN_previous(kind, code, date)             รายการของแผนล่าสุดก่อนวันนั้น (ปุ่ม "คัดลอกจากแผนก่อน")
 //   DPLAN_save(req)                              บันทึกร่าง / ส่งแผน / แก้ไขหลังส่ง
 //   DPLAN_setExcluded(id, excluded, reason)      ไม่นับใน KPI
-//   DPLAN_review(req)                            ผู้ตรวจปรับผลเป็น "ไม่สมบูรณ์" (KPI ใช้ผลหลังปรับ)
+//   DPLAN_uploadSigned(req)                      ส่งใบที่ PE/PM ตรวจ+เซ็นแล้ว (PDF/รูป) + ผลตามที่ PE/PM ติ๊กในใบ
+//   DPLAN_removeSigned(id)                       ลบใบเซ็น (admin) → แผนกลับเป็น "รอใบเซ็น"
 //   DPLAN_delete(id)                             ลบ (ร่าง = ธุรการลบได้ · ส่งแล้ว = admin เท่านั้น)
 //   DPLAN_deleteMany(ids)                        ลบหลายแผน (admin เท่านั้น)
 //   DPLAN_kpi({ from, to, code })                KPI แยกฟอร์ม × โครงการ × เดือน
 //
+// ขั้นตอน: ธุรการกรอก + ส่งแผน → พิมพ์ฟอร์ม (ช่องตรวจสอบว่างไว้) → PE/PM ติ๊ก + ลงนาม
+//          → ธุรการสแกน/ถ่ายรูปใบที่เซ็นแล้ว ส่งกลับเข้าระบบ พร้อมกรอกผลตามที่ PE/PM ติ๊ก
 // KPI = (จำนวนแผนที่ข้อมูลครบถ้วน ÷ จำนวนแผนทั้งหมดที่จัดทำ) × 100
-//   - "จัดทำ" = กดส่งแผนแล้ว · ร่างที่ยังไม่ส่งไม่นับ · แผนที่ติ๊ก "ไม่นับ" ไม่อยู่ในตัวหาร
-//   - ครบถ้วน = ตรวจอัตโนมัติตอนส่งครั้งแรก แล้วเก็บผลไว้ — แก้ไข/เพิ่มรายการทีหลังไม่เปลี่ยนผล KPI
-//     หัวหน้างาน / ผู้ตรวจ ตรวจทานใบพิมพ์แล้วปรับเป็น "ไม่สมบูรณ์" ได้ (เช่น ข้อมูลไม่ชัด) — KPI ใช้ผลหลังปรับ
+//   - "จัดทำ" = กดส่งแผนแล้ว และส่งใบเซ็นแล้ว · ยังไม่ส่งใบเซ็น = "รอใบเซ็น" ยังไม่อยู่ในตัวหาร
+//   - ร่างที่ยังไม่ส่งไม่นับ · แผนที่ติ๊ก "ไม่นับ" ไม่อยู่ในตัวหาร
+//   - ครบถ้วน = ตามที่ PE/PM ติ๊กในใบเซ็น (signed_complete)
+//   - ระบบยังตรวจช่องว่างตอนส่งครั้งแรก (complete / missing) ไว้เป็นตัวช่วยธุรการ ไม่อยู่ในสูตร
 //   - รถ:        ทุกแถวต้องมี ทะเบียนรถ · ประเภทรถ · จุดกอง/จุดลงของ · เวลา
 //   - เครื่องจักร: ทุกแถวต้องมี เครื่องจักร · ช่วงเวลา · งานที่ทำ · ผู้ขอใช้ (ลิฟท์ไม่มีช่องผู้ขอใช้ในฟอร์ม → ไม่บังคับ)
 //   - เวลาที่ส่ง (ทัน 16:00 ของวันทำงานก่อนหน้าหรือไม่) แสดงประกอบ ไม่อยู่ในสูตร
 // ============================================================
+const fs = require('fs');
+const path = require('path');
 const { sitePool } = require('../db');
 const { UserError, withTx } = require('./common');
+
+const SIGNED_DIR = path.join(__dirname, '..', 'storage', 'dplan-signed');
+const SIGNED_MAX = 15 * 1024 * 1024;
+const SIGNED_TYPES = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
 const PROJECTS = require('./checklist_projects');
 
 const TZ = 'Asia/Bangkok';
@@ -214,12 +224,17 @@ const PLAN_COLS = `id, kind, project_code AS "projectCode", TO_CHAR(plan_date, '
   review_incomplete AS "reviewIncomplete", review_fields AS "reviewFields", review_note AS "reviewNote", reviewer,
   reviewer_position AS "reviewerPosition", TO_CHAR(reviewed_at AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS "reviewedDate",
   review_entered_by AS "reviewEnteredBy",
+  (signed_file IS NOT NULL) AS "signed", signed_original AS "signedOriginal", signed_complete AS "signedComplete",
+  TO_CHAR(signed_date, 'YYYY-MM-DD') AS "signedDate", signed_uploaded_by AS "signedBy",
+  TO_CHAR(signed_uploaded_at AT TIME ZONE '${TZ}', 'DD/MM/') || (EXTRACT(YEAR FROM signed_uploaded_at AT TIME ZONE '${TZ}')::int + 543) || TO_CHAR(signed_uploaded_at AT TIME ZONE '${TZ}', ' HH24:MI') AS "signedText",
   updated_by AS "updatedBy", TO_CHAR(updated_at AT TIME ZONE '${TZ}', 'DD/MM/') || (EXTRACT(YEAR FROM updated_at AT TIME ZONE '${TZ}')::int + 543) || TO_CHAR(updated_at AT TIME ZONE '${TZ}', ' HH24:MI') AS "updatedText"`;
 
 function withOnTime(plan, hol) {
-  // ผลตรวจที่ใช้จริง = ระบบตรวจตอนส่ง แล้วถ้าผู้ตรวจปรับเป็นไม่สมบูรณ์ ใช้ผลของผู้ตรวจ
+  // ผลที่ใช้ใน KPI = ตามที่ PE/PM ติ๊กในใบเซ็น · ยังไม่ส่งใบเซ็น = null (รอใบเซ็น)
+  // systemComplete = ระบบตรวจช่องว่างตอนส่งครั้งแรก (ตัวช่วย ไม่อยู่ในสูตร)
   plan.systemComplete = plan.complete;
-  if (plan.complete != null) plan.complete = !!plan.complete && !plan.reviewIncomplete;
+  plan.signed = !!plan.signed;
+  plan.complete = plan.status === 'submitted' && plan.signed ? !!plan.signedComplete : null;
   const dl = deadlineOf(plan.kind, plan.planDate, plan.otDate, hol);
   plan.deadlineDate = dl.date;
   plan.onTime = plan.submittedAt ? new Date(plan.submittedAt) <= dl.at : null;
@@ -409,28 +424,78 @@ async function DPLAN_setExcluded(id, excluded, reason) {
   return { ok: true };
 }
 
-// ผลตรวจทานของหัวหน้างาน / ผู้ตรวจ (กรอกตามที่ผู้ตรวจติ๊ก/เซ็นในใบพิมพ์)
-//   req = { id, incomplete: bool, fields: ['plate', ...], note, reviewer, position }
-//   ปรับได้แค่ทางเดียว: จาก "สมบูรณ์" → "ไม่สมบูรณ์" (ช่องที่ระบบเห็นว่าว่าง ผู้ตรวจปรับเป็นครบไม่ได้)
-async function DPLAN_review(req) {
+// ส่งใบที่ PE/PM ตรวจ + ลงนามแล้ว
+//   req = { id, complete: true|false (ตามที่ PE/PM ติ๊ก), fields: ['plate', ...], note, reviewer, position,
+//           signedDate: 'YYYY-MM-DD', fileName, dataUrl (PDF / JPG / PNG) }
+//   ส่งซ้ำ = แทนที่ไฟล์เดิม · แก้แค่ผลโดยไม่แนบไฟล์ใหม่ได้ (ต้องเคยส่งไฟล์แล้ว)
+async function DPLAN_uploadSigned(req) {
   requireStaff(this);
   req = req || {};
-  const p = (await sitePool.query('SELECT kind, status FROM dplan_plans WHERE id = $1', [Number(req.id) || 0])).rows[0];
+  const id = Number(req.id) || 0;
+  const p = (await sitePool.query(
+    `SELECT kind, status, project_code, TO_CHAR(plan_date, 'YYYY-MM-DD') AS d, signed_file FROM dplan_plans WHERE id = $1`, [id])).rows[0];
   if (!p) throw new UserError('ไม่พบแผนนี้');
-  if (p.status !== 'submitted') throw new UserError('บันทึกผลตรวจได้เฉพาะแผนที่ส่งแล้ว');
-  const on = !!req.incomplete;
+  if (p.status !== 'submitted') throw new UserError('ส่งใบเซ็นได้เฉพาะแผนที่กดส่งแล้ว');
+  if (typeof req.complete !== 'boolean') throw new UserError('เลือกผลตรวจตามที่ PE/PM ติ๊กในใบ (สมบูรณ์ / ไม่สมบูรณ์)');
   const allowed = p.kind === 'vehicle' ? ['plate', 'type', 'location', 'time'] : ['machine', 'mtime', 'job', 'requester'];
-  const fields = (Array.isArray(req.fields) ? req.fields : []).filter(f => allowed.includes(f));
-  const note = str(req.note, 500), reviewer = str(req.reviewer, 100);
-  if (on) {
-    if (!fields.length && !note) throw new UserError('ระบุช่องที่ขาด / ไม่ชัด หรือรายละเอียด อย่างน้อย 1 อย่าง');
-    if (!reviewer) throw new UserError('กรุณาใส่ชื่อผู้ตรวจ (ตามที่ลงชื่อในใบ)');
+  const fields = req.complete ? [] : (Array.isArray(req.fields) ? req.fields : []).filter(f => allowed.includes(f));
+  const note = req.complete ? '' : str(req.note, 500);
+  const reviewer = str(req.reviewer, 100);
+  if (!reviewer) throw new UserError('กรุณาใส่ชื่อ PE/PM ที่ลงนามในใบ');
+  if (!req.complete && !fields.length && !note) throw new UserError('แผนไม่สมบูรณ์: ติ๊กข้อมูลที่ขาด / ไม่ชัด หรือใส่รายละเอียดตามใบ อย่างน้อย 1 อย่าง');
+  const signedDate = req.signedDate ? dateOf(req.signedDate, 'วันที่ PE/PM ลงนาม') : todayBkk();
+
+  let newFile = null;
+  if (req.dataUrl) {
+    const m = String(req.dataUrl).match(/^data:([\w/+.-]+);base64,(.+)$/);
+    const ext = m && SIGNED_TYPES[m[1]];
+    if (!ext) throw new UserError('รองรับเฉพาะไฟล์ PDF หรือรูป JPG / PNG');
+    const buf = Buffer.from(m[2], 'base64');
+    if (!buf.length) throw new UserError('ไฟล์ว่าง');
+    if (buf.length > SIGNED_MAX) throw new UserError('ไฟล์ใหญ่เกิน 15 MB');
+    const dir = path.join(SIGNED_DIR, p.project_code);
+    fs.mkdirSync(dir, { recursive: true });
+    newFile = `${p.project_code}/${p.kind}_${p.d}_${Date.now()}.${ext}`;
+    await fs.promises.writeFile(path.join(SIGNED_DIR, newFile), buf);
+  } else if (!p.signed_file) {
+    throw new UserError('แนบไฟล์ใบที่ PE/PM เซ็นแล้ว (PDF หรือรูป)');
   }
+  const by = byName(this);
   await sitePool.query(
-    `UPDATE dplan_plans SET review_incomplete = $2, review_fields = $3::jsonb, review_note = $4, reviewer = $5, reviewer_position = $6,
-            reviewed_at = CASE WHEN $2 THEN NOW() ELSE NULL END, review_entered_by = $7, updated_by = $7, updated_at = NOW() WHERE id = $1`,
-    [Number(req.id), on, JSON.stringify(on ? fields : []), on ? note : '', on ? reviewer : '', on ? str(req.position, 60) : '', byName(this)]);
+    `UPDATE dplan_plans SET signed_complete = $2, review_incomplete = NOT $2, review_fields = $3::jsonb, review_note = $4,
+            reviewer = $5, reviewer_position = $6, reviewed_at = NOW(), review_entered_by = $7, signed_date = $8,
+            signed_file = COALESCE($9, signed_file), signed_original = CASE WHEN $9::text IS NULL THEN signed_original ELSE $10 END,
+            signed_uploaded_by = $7, signed_uploaded_at = NOW(), updated_by = $7, updated_at = NOW()
+      WHERE id = $1`,
+    [id, req.complete, JSON.stringify(fields), note, reviewer, str(req.position, 60), by, signedDate, newFile, str(req.fileName, 200)]);
+  if (newFile && p.signed_file && p.signed_file !== newFile) fs.promises.unlink(path.join(SIGNED_DIR, p.signed_file)).catch(() => {});
   return { ok: true };
+}
+
+// ลบใบเซ็น (admin) — ใช้กรณีแนบผิดใบ แผนจะกลับเป็น "รอใบเซ็น"
+async function DPLAN_removeSigned(id) {
+  requireStaff(this);
+  if (!isAdmin(this)) throw new UserError('ลบใบเซ็นได้เฉพาะผู้ดูแลระบบ (admin) — ถ้าแนบผิด ธุรการส่งไฟล์ใหม่ทับได้');
+  const p = (await sitePool.query('SELECT signed_file FROM dplan_plans WHERE id = $1', [Number(id) || 0])).rows[0];
+  if (!p) throw new UserError('ไม่พบแผนนี้');
+  await sitePool.query(
+    `UPDATE dplan_plans SET signed_file = NULL, signed_original = NULL, signed_complete = NULL, signed_date = NULL,
+            signed_uploaded_by = NULL, signed_uploaded_at = NULL, review_incomplete = FALSE, review_fields = '[]'::jsonb,
+            review_note = '', reviewer = '', reviewer_position = '', reviewed_at = NULL, updated_by = $2, updated_at = NOW()
+      WHERE id = $1`, [Number(id), byName(this)]);
+  if (p.signed_file) fs.promises.unlink(path.join(SIGNED_DIR, p.signed_file)).catch(() => {});
+  return { ok: true };
+}
+
+// ไฟล์ใบเซ็นของแผน (ใช้ใน routes/dplan_signed.js)
+async function signedFilePath(id) {
+  const r = (await sitePool.query(
+    `SELECT signed_file, kind, project_code, TO_CHAR(plan_date, 'YYYY-MM-DD') AS d FROM dplan_plans WHERE id = $1`, [Number(id) || 0])).rows[0];
+  if (!r || !r.signed_file) return null;
+  const file = path.join(SIGNED_DIR, r.signed_file);
+  if (!file.startsWith(SIGNED_DIR) || !fs.existsSync(file)) return null;
+  const ext = path.extname(file).slice(1);
+  return { file, ext, name: `${FORMS[r.kind] ? FORMS[r.kind].formNo : r.kind}_${r.project_code}_${r.d}_ลงนาม.${ext}` };
 }
 
 async function DPLAN_delete(id) {
@@ -438,7 +503,8 @@ async function DPLAN_delete(id) {
   const p = (await sitePool.query('SELECT status FROM dplan_plans WHERE id = $1', [Number(id) || 0])).rows[0];
   if (!p) throw new UserError('ไม่พบแผนนี้ (อาจถูกลบไปแล้ว)');
   if (p.status === 'submitted' && !isAdmin(this)) throw new UserError('แผนที่ส่งแล้วลบได้เฉพาะผู้ดูแลระบบ (admin) — ถ้าไม่ต้องการนับ ให้ติ๊ก "ไม่นับ"');
-  await sitePool.query('DELETE FROM dplan_plans WHERE id = $1', [Number(id)]);
+  const f = (await sitePool.query('DELETE FROM dplan_plans WHERE id = $1 RETURNING signed_file', [Number(id)])).rows[0];
+  if (f && f.signed_file) fs.promises.unlink(path.join(SIGNED_DIR, f.signed_file)).catch(() => {});
   return { ok: true };
 }
 
@@ -459,10 +525,11 @@ async function DPLAN_kpi(req) {
 
   const agg = new Map();
   const add = (key, base, p) => {
-    if (!agg.has(key)) agg.set(key, Object.assign({ made: 0, complete: 0, excluded: 0, drafts: 0, onTime: 0, late: 0 }, base));
+    if (!agg.has(key)) agg.set(key, Object.assign({ made: 0, complete: 0, excluded: 0, drafts: 0, pending: 0, onTime: 0, late: 0 }, base));
     const a = agg.get(key);
     if (p.status !== 'submitted') { a.drafts++; return; }
     if (p.excluded) { a.excluded++; return; }
+    if (!p.signed) { a.pending++; return; }   // ยังไม่ส่งใบเซ็น → ยังไม่อยู่ในตัวหาร
     a.made++;
     if (p.complete) a.complete++;
     if (p.onTime) a.onTime++; else a.late++;
@@ -477,18 +544,15 @@ async function DPLAN_kpi(req) {
     projectName: a.code ? (names.get(a.code) || a.code) : '',
     pct: a.made ? Math.round(a.complete / a.made * 1000) / 10 : null,
   }));
-  // แผนที่ข้อมูลไม่ครบ (ไว้ดูว่าขาดอะไรบ่อย)
+  // แผนที่ PE/PM ติ๊กไม่สมบูรณ์ (ไว้ดูว่าขาดอะไรบ่อย)
   const incomplete = rows.filter(p => p.status === 'submitted' && !p.excluded && p.complete === false)
-    .map(p => ({ id: p.id, kind: p.kind, code: p.projectCode, planDate: p.planDate, missing: p.missing || [],
-      reviewIncomplete: !!p.reviewIncomplete, reviewFields: p.reviewFields || [] }));
+    .map(p => ({ id: p.id, kind: p.kind, code: p.projectCode, planDate: p.planDate, reviewFields: p.reviewFields || [] }));
   const fieldCount = {};
-  incomplete.forEach(p => {
-    const fs = new Set(p.reviewFields);
-    p.missing.forEach(m => m.fields.forEach(f => fs.add(f)));
-    fs.forEach(f => { const k = p.kind + '|' + f; fieldCount[k] = (fieldCount[k] || 0) + 1; });
-  });
-  const reviewed = rows.filter(p => p.status === 'submitted' && !p.excluded && p.reviewIncomplete && p.systemComplete).length;
-  return { from: from.slice(0, 7), to: toM, rows: list, incomplete, fieldCount, reviewed };
+  incomplete.forEach(p => p.reviewFields.forEach(f => { const k = p.kind + '|' + f; fieldCount[k] = (fieldCount[k] || 0) + 1; }));
+  // แผนที่ส่งแล้วแต่ยังไม่ส่งใบเซ็น (ไว้ตามเอกสาร)
+  const pending = rows.filter(p => p.status === 'submitted' && !p.excluded && !p.signed)
+    .map(p => ({ id: p.id, kind: p.kind, code: p.projectCode, planDate: p.planDate }));
+  return { from: from.slice(0, 7), to: toM, rows: list, incomplete, fieldCount, pending };
 }
 
 // ลบหลายแผนพร้อมกัน (admin เท่านั้น — ใช้ล้างแผนทดลอง/แผนที่ทำผิด)
@@ -497,7 +561,8 @@ async function DPLAN_deleteMany(ids) {
   if (!isAdmin(this)) throw new UserError('ลบหลายแผนได้เฉพาะผู้ดูแลระบบ (admin)');
   const list = (Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 400);
   if (!list.length) throw new UserError('ยังไม่ได้เลือกแผน');
-  const r = await sitePool.query('DELETE FROM dplan_plans WHERE id = ANY($1::int[])', [list]);
+  const r = await sitePool.query('DELETE FROM dplan_plans WHERE id = ANY($1::int[]) RETURNING signed_file', [list]);
+  r.rows.forEach(x => { if (x.signed_file) fs.promises.unlink(path.join(SIGNED_DIR, x.signed_file)).catch(() => {}); });
   return { ok: true, deleted: r.rowCount };
 }
 
@@ -508,9 +573,9 @@ async function summary() {
 }
 
 module.exports = {
-  checkItems, deadlineOf, prevWorkday, summary, FORMS,
+  checkItems, deadlineOf, prevWorkday, summary, FORMS, signedFilePath,
   functions: {
     DPLAN_meta, DPLAN_resources, DPLAN_template, DPLAN_saveResources, DPLAN_month, DPLAN_get,
-    DPLAN_previous, DPLAN_save, DPLAN_setExcluded, DPLAN_review, DPLAN_delete, DPLAN_deleteMany, DPLAN_kpi,
+    DPLAN_previous, DPLAN_save, DPLAN_setExcluded, DPLAN_uploadSigned, DPLAN_removeSigned, DPLAN_delete, DPLAN_deleteMany, DPLAN_kpi,
   },
 };

@@ -33,6 +33,7 @@
     .sys-checklist { background:#E8F0FD; color:var(--blue); }
     .sys-npo { background:#E3F5EC; color:var(--green); }
     .sys-transport { background:#FFF4D6; color:#8A6400; }
+    .sys-dplan { background:#E8F0FD; color:#2B5DB8; }
     .d-title { font-weight:700; font-size:14.5px; word-break:break-word; }
     .d-proj { font-size:13px; color:var(--ink-light); margin-top:2px; word-break:break-word; }
     .d-meta { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.55; word-break:break-word; }
@@ -61,7 +62,7 @@
   <div class="top"><div class="wrap">
     <a class="back" href="/admin">← กลับหน้าผู้ดูแลระบบ</a>
     <h1>📁 คลังเอกสาร PDF</h1>
-    <p>รวม PDF ทุกระบบ — เช็คลิสต์ที่ลงนามครบ · ใบสั่งงาน NPO · ใบเบิกวัสดุ (เฉพาะ admin)</p>
+    <p>รวม PDF ทุกระบบ — เช็คลิสต์ที่ลงนามครบ · ใบสั่งงาน NPO · ใบเบิกวัสดุ · ใบแผนประจำวันที่ PE/PM เซ็นแล้ว (เฉพาะ admin)</p>
   </div></div>
 
   <div class="wrap">
@@ -77,6 +78,7 @@
           <option value="checklist">เช็คลิสต์ตรวจพื้นที่</option>
           <option value="npo">ใบสั่งงาน NPO (ขยะ)</option>
           <option value="transport">ใบเบิกวัสดุ (ขนส่ง)</option>
+          <option value="dplan">แผนประจำวัน (ใบเซ็น PE/PM)</option>
         </select></div>
       <div><label for="fQ">ค้นหา (โครงการ / เลขที่ / ชื่อคน)</label><input id="fQ" type="search" placeholder="เช่น 0DJ, NPO-, สมชาย"></div>
       <div><label for="fFrom">ตั้งแต่วันที่</label><input id="fFrom" type="date"></div>

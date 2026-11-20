@@ -77,3 +77,14 @@ ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS review_entered_by TEXT;        
 
 -- v3 (13 พ.ย. 2569): ประเภทงานของเครื่องจักร (ใช้แยกสีไฮไลต์ในใบพิมพ์ 01-03) — ดู WORK_TYPES ใน services/daily_plan.js
 ALTER TABLE dplan_items ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT '';
+
+-- ใบที่ PE/PM ตรวจ + ลงนามแล้ว (ธุรการพิมพ์ → PE/PM ติ๊ก/เซ็น → สแกน/ถ่ายรูปส่งกลับเข้าระบบ) — 20 พ.ย. 2569
+--   KPI นับเฉพาะแผนที่ส่งใบเซ็นแล้ว · ผลสมบูรณ์/ไม่สมบูรณ์ ยึดตามที่ PE/PM ติ๊กในใบ
+--   ผู้ตรวจ / ตำแหน่ง / ช่องที่ขาด / รายละเอียด ใช้คอลัมน์ reviewer, reviewer_position, review_fields, review_note เดิม
+--   ไฟล์เก็บที่ storage/dplan-signed/<โครงการ>/ (นอก public) เปิดผ่าน /api/dplan-signed/<id> (ต้อง login)
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_file TEXT;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_original TEXT;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_complete BOOLEAN;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_date DATE;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_uploaded_by TEXT;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_uploaded_at TIMESTAMPTZ;
