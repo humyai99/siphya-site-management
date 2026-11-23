@@ -5,7 +5,7 @@
 | เช็คลิสต์ตรวจหน้างาน | `/checklist` | ทดลอง (เริ่มจากตารางว่าง) | [CHECKLIST_SETUP.md](CHECKLIST_SETUP.md) |
 | ติดตามขยะ + ใบสั่งงาน NPO | `/waste`, `/npo` | ทดลอง (เริ่มจากตารางว่าง) | [WASTE_NPO_SETUP.md](WASTE_NPO_SETUP.md) |
 | แผนการเดินรถ (ฟอร์มขอจองรถเดิม) | `/route` | เก็บไว้ ไม่มีลิงก์ใน /admin แล้ว | [ROUTE_SETUP.md](ROUTE_SETUP.md) |
-| บันทึกการเปลี่ยนแผนเดินรถ | `/route-plan` | ทดลอง (admin เท่านั้น) | [ROUTE_PLAN_SETUP.md](ROUTE_PLAN_SETUP.md) |
+| บันทึกการเปลี่ยนแผนเดินรถ | `/route-plan` | ทดลอง (ธุรการ + admin · ลบ Revise = admin) | [ROUTE_PLAN_SETUP.md](ROUTE_PLAN_SETUP.md) |
 | ขนส่งวัสดุในไซต์ | `/transport`, `/transport-entry` | **ข้อมูลจริง** นำเข้าจาก Google Sheet | [TRANSPORT_SETUP.md](TRANSPORT_SETUP.md) |
 
 ## หลักการที่ใช้

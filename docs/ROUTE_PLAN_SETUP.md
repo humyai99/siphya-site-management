@@ -1,6 +1,6 @@
 # บันทึกการเปลี่ยนแผนเดินรถ (`/route-plan`)
 
-ใช้แทนฟอร์มขอจองรถเดิม (`/route` ยังเปิดได้ แต่การ์ดใน /admin ชี้มาหน้านี้แล้ว) · **ใช้ได้เฉพาะบัญชี admin**
+ใช้แทนฟอร์มขอจองรถเดิม (`/route` ยังเปิดได้ แต่การ์ดในหน้าแรก / และ /admin ชี้มาหน้านี้แล้ว) · **ใช้ได้กับบัญชีธุรการ (staff) และ admin** · ลบ Revise ทั้งฉบับ = admin เท่านั้น
 
 ## ติดตั้ง
 ```bash
@@ -25,7 +25,7 @@ node scripts/migrate_route_plan.js   # สร้างตาราง rplan_* (�
 ## ไฟล์
 - `services/route_plan_pdf.js` — อ่าน PDF ด้วยตำแหน่งตัวหนังสือ (pdfjs) · ถ้าสระบุรีเปลี่ยนหน้าตาตาราง แก้ที่นี่
 - `services/route_plan.js` — อัปโหลด, เทียบ Revise, สาเหตุ, รายงาน (ฟังก์ชัน `RPLAN_*` ผ่าน `/api/gas`)
-- `routes/route_plan_file.js` — เปิด PDF/ไฟล์แนบ (`/api/route-plan-file/rev|att/:id`, admin)
+- `routes/route_plan_file.js` — เปิด PDF/ไฟล์แนบ (`/api/route-plan-file/rev|att/:id`, ธุรการ + admin)
 - `public/route-plan.html`
 
 ทดสอบกับแผนจริงสัปดาห์ 9–15 พ.ย. 2569 (Rev 0–3): อ่านครบ 15 คัน, จับการเปลี่ยนแปลงตรงกับเอกสาร (เช่น Rev 3 ยกเลิก CUT&BEND → 16 RESIDENCES ของ VORASIN ตรงกับใบแจ้งยกเลิก "สั่งซ้ำในระบบ")

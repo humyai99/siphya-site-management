@@ -89,7 +89,7 @@
 <body>
   <div class="top">
     <div class="wrap">
-      <a class="back" href="/admin">← กลับหน้าหลัก</a>
+      <a class="back" id="backLink" href="/">← กลับหน้าหลัก</a>
       <h1>บันทึกการเปลี่ยนแผนเดินรถ</h1>
       <p>อัปโหลด PDF แผนเดินรถประจำสัปดาห์ของศูนย์สระบุรีทุก Revise — ระบบเทียบกับฉบับก่อนหน้าให้ว่าเที่ยวไหนเพิ่ม ยกเลิก หรือย้ายวัน แล้วเลือกสาเหตุ + แนบใบแจ้งยกเลิก/จองด่วน</p>
       <div class="tabs">
@@ -256,7 +256,7 @@
     var revHtml = w.revisions.map(function (r) {
       return '<span class="rev"><a href="/api/route-plan-file/rev/' + r.id + '" target="_blank">Rev ' + r.revNo + '</a>' +
         '<span class="note">' + (r.revDate ? r.revDate + ' · ' : '') + r.jobs + ' งาน · อัปโหลด ' + esc(r.uploadedAt) + '</span>' +
-        '<button class="x" title="ลบฉบับนี้" data-del-rev="' + r.id + '" data-rev="' + r.revNo + '">✕</button></span>';
+        (META.isAdmin ? '<button class="x" title="ลบฉบับนี้ (admin)" data-del-rev="' + r.id + '" data-rev="' + r.revNo + '">✕</button>' : '') + '</span>';
     }).join('');
     var counted = w.changes.filter(function (c) { return c.kind === 'job' && c.inWeek && !c.stale && c.effCounted; });
     var shown = SHOW_ALL ? w.changes : w.changes.filter(function (c) { return c.kind === 'job' && c.inWeek && (c.effCounted || c.cause != null || c.stale); });
@@ -442,7 +442,7 @@
 
   // ---------------- เริ่ม
   (async function () {
-    try { META = await call('RPLAN_meta'); await loadWeeks(); }
+    try { META = await call('RPLAN_meta'); if (META.isAdmin) document.getElementById('backLink').href = '/admin'; await loadWeeks(); }
     catch (e) { $('weekBody').innerHTML = '<div class="empty" style="color:var(--red)">' + esc(e.message) + '</div>'; }
   })();
 </script>

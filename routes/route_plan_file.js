@@ -1,6 +1,6 @@
 // GET /api/route-plan-file/rev/:id  — เปิด PDF แผนเดินรถที่อัปโหลด
 // GET /api/route-plan-file/att/:id  — เปิดไฟล์แนบ (รูป/PDF ใบแจ้งยกเลิก/จองด่วน)
-// เฉพาะ admin · เปิดจากเบราว์เซอร์ตรงๆ จึงพาไปหน้า login แทนการตอบ JSON
+// ธุรการ (staff) + admin · เปิดจากเบราว์เซอร์ตรงๆ จึงพาไปหน้า login แทนการตอบ JSON
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -20,7 +20,7 @@ router.get('/:what(rev|att)/:id(\\d+)', (req, res) => {
   jwt.verify(token, JWT_SECRET, async (err, user) => {
     if (err) return toLogin();
     const role = req.liveRole || (user && user.role);
-    if (role !== 'admin') return msg(res, 403, 'ใช้ได้เฉพาะบัญชีผู้ดูแลระบบ (admin)');
+    if (role !== 'admin' && role !== 'staff') return msg(res, 403, 'ใช้ได้เฉพาะบัญชีธุรการ หรือผู้ดูแลระบบ (admin)');
     try {
       const sql = req.params.what === 'rev'
         ? `SELECT file_path, file_name, 'application/pdf' mime FROM rplan_revisions WHERE id = $1`

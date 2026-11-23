@@ -50,6 +50,11 @@ const TYPE_TH = { add: 'เพิ่ม', cancel: 'ยกเลิก', move: '�
 const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max || 500);
 const norm = s => String(s || '').replace(/\s+/g, '').toUpperCase();
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+// ธุรการ (staff) + admin ใช้ได้ (ปรับ 23 พ.ย. 2569) · ลบ Revise ทั้งฉบับ = admin เท่านั้น
+function requireStaff(ctx) {
+  const role = ctx && ctx.user && ctx.user.role;
+  if (role !== 'admin' && role !== 'staff') throw new UserError('ใช้ได้เฉพาะบัญชีธุรการ หรือผู้ดูแลระบบ (admin)');
+}
 function requireAdmin(ctx) {
   if (!(ctx && ctx.user && ctx.user.role === 'admin')) throw new UserError('ใช้ได้เฉพาะบัญชีผู้ดูแลระบบ (admin)');
 }
@@ -164,12 +169,12 @@ async function recompute(client, weekStart) {
 
 // ------------------------------------------------------------
 async function RPLAN_meta() {
-  requireAdmin(this);
-  return { causes: CAUSES, buList: BU_LIST.concat([BU_FURN_PUCHAO, BU_OTHER]), types: TYPE_TH };
+  requireStaff(this);
+  return { causes: CAUSES, buList: BU_LIST.concat([BU_FURN_PUCHAO, BU_OTHER]), types: TYPE_TH, isAdmin: this.user.role === 'admin' };
 }
 
 async function RPLAN_upload(req) {
-  requireAdmin(this);
+  requireStaff(this);
   req = req || {};
   const { buf } = decodeDataUrl(req.dataUrl);
   if (buf.slice(0, 5).toString('latin1') !== '%PDF-') throw new UserError('รองรับเฉพาะไฟล์ PDF แผนเดินรถ');
@@ -224,7 +229,7 @@ const effCounted = `COALESCE(c.counted, c.auto_counted)`;
 const COUNTED_SQL = `c.kind = 'job' AND c.in_week AND NOT c.stale AND ${effCounted}`;
 
 async function RPLAN_weeks() {
-  requireAdmin(this);
+  requireStaff(this);
   return (await sitePool.query(`
     SELECT TO_CHAR(r.week_start,'YYYY-MM-DD') "weekStart", TO_CHAR(MAX(r.week_end),'YYYY-MM-DD') "weekEnd",
            COUNT(*)::int "revCount", MAX(r.rev_no)::int "lastRev", MIN(r.rev_no)::int "firstRev",
@@ -236,7 +241,7 @@ async function RPLAN_weeks() {
 }
 
 async function RPLAN_week(weekStart) {
-  requireAdmin(this);
+  requireStaff(this);
   if (!isDate(weekStart)) throw new UserError('สัปดาห์ไม่ถูกต้อง');
   const revisions = (await sitePool.query(`
     SELECT r.id, r.rev_no "revNo", TO_CHAR(r.rev_date,'DD/MM/YYYY') "revDate", r.file_name "fileName", r.uploaded_by "uploadedBy",
@@ -270,7 +275,7 @@ async function RPLAN_week(weekStart) {
 }
 
 async function RPLAN_saveChange(id, req) {
-  requireAdmin(this);
+  requireStaff(this);
   req = req || {};
   const cause = req.cause == null || req.cause === '' ? null : str(req.cause, 200);
   if (cause && !CAUSES.some(c => c.name === cause)) throw new UserError('สาเหตุไม่ถูกต้อง');
@@ -283,7 +288,7 @@ async function RPLAN_saveChange(id, req) {
 }
 
 async function RPLAN_attach(changeId, req) {
-  requireAdmin(this);
+  requireStaff(this);
   req = req || {};
   const { mime, buf } = decodeDataUrl(req.dataUrl);
   let ext = '';
@@ -306,7 +311,7 @@ async function RPLAN_attach(changeId, req) {
 }
 
 async function RPLAN_deleteAttachment(id) {
-  requireAdmin(this);
+  requireStaff(this);
   const r = await sitePool.query('DELETE FROM rplan_attachments WHERE id = $1 RETURNING file_path', [Number(id)]);
   if (r.rows.length) fs.rmSync(path.join(__dirname, '..', 'storage', r.rows[0].file_path), { force: true });
   return { ok: true };
@@ -325,7 +330,7 @@ async function RPLAN_deleteRevision(id) {
 }
 
 async function RPLAN_report(req) {
-  requireAdmin(this);
+  requireStaff(this);
   req = req || {};
   const params = [];
   let where = '';
