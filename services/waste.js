@@ -762,7 +762,8 @@ async function loadImage(url) {
       buf = Buffer.from(await res.arrayBuffer());
     } else return null;
     const sharp = require('sharp');
-    const out = await sharp(buf).rotate().resize(800, 600, { fit: 'cover' }).jpeg({ quality: 70 }).toBuffer();
+    // ย่ออย่างเดียว ไม่ครอป (fit: inside) — รูปแนวตั้งจากมือถือยังเห็น timestamp ที่มุมรูป · ช่องในตารางใช้ object-fit: contain
+    const out = await sharp(buf).rotate().resize(800, 800, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 70 }).toBuffer();
     return 'data:image/jpeg;base64,' + out.toString('base64');
   } catch (e) {
     console.warn('[npo] โหลดรูปไม่ได้:', url, e.message);
@@ -829,7 +830,8 @@ async function buildNpoPdf(client, npoId) {
     tr.trip { height: ${ROW_MM}mm; break-inside: avoid; page-break-inside: avoid; }
     tr.trip td { height: ${ROW_MM}mm; font-size: 6pt; padding: 0 0.4mm; white-space: nowrap; }
     td.ph { padding: 0; }
-    td.ph img { display: block; width: 100%; height: ${ROW_MM}mm; object-fit: cover; }
+    /* contain = เห็นรูปทั้งใบ (timestamp ที่มุมรูปไม่ถูกตัด) ช่องว่างข้างรูปเป็นสีเทาอ่อน */
+    td.ph img { display: block; width: 100%; height: ${ROW_MM}mm; object-fit: contain; background: #eee; }
     .noimg { color: #999; }
     tr.sum td { height: 6mm; background: #D3D3D3; font-weight: bold; }
     tr.sum td.num { padding: 0; font-size: ${totalCost >= 10000 ? 5.5 : 7}pt; white-space: nowrap; }

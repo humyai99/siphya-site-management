@@ -287,10 +287,11 @@
 
       <div class="card">
         <div class="card-title"><span class="badge">4</span> หลักฐานรูปภาพ <span style="color:#e53e3e;">*</span></div>
+        <div style="font-size:12px;color:#4a5568;margin:-4px 0 10px;line-height:1.5">แนบรูปจาก<b>คลังภาพ</b>ที่ถ่ายด้วยแอปกล้อง timestamp (เห็นวันเวลาบนรูป) — ระบบเก็บรูปทั้งใบ ไม่ตัดขอบ</div>
         <div class="row photos">
           <div class="col">
             <div class="photo-upload-box">
-              <input type="file" id="photo1" accept="image/*" capture="environment" onchange="previewImg(this, 'p1', 'icon1')">
+              <input type="file" id="photo1" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onchange="previewImg(this, 'p1', 'icon1')">
               <div id="icon1"><span style="font-size:20px;">📷</span><div style="font-size:11px; font-weight:700; margin-top:3px;">1. รูปหน้ารถ (ตอนเข้าไซต์ให้เห็นป้ายทะเบียน) </div></div>
               <img id="p1">
               <div class="compressing" id="compressing1">⏳ กำลังย่อรูป...</div>
@@ -298,7 +299,7 @@
           </div>
           <div class="col">
             <div class="photo-upload-box">
-              <input type="file" id="photo2" accept="image/*" capture="environment" onchange="previewImg(this, 'p2', 'icon2')">
+              <input type="file" id="photo2" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onchange="previewImg(this, 'p2', 'icon2')">
               <div id="icon2"><span style="font-size:20px;">🚚</span><div style="font-size:11px; font-weight:700; margin-top:3px;">2. รูปขยะบนรถ (ภาพมุมสูง)</div></div>
               <img id="p2">
               <div class="compressing" id="compressing2">⏳ กำลังย่อรูป...</div>
@@ -306,7 +307,7 @@
           </div>
           <div class="col">
             <div class="photo-upload-box">
-              <input type="file" id="photo3" accept="image/*" capture="environment" onchange="previewImg(this, 'p3', 'icon3')">
+              <input type="file" id="photo3" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onchange="previewImg(this, 'p3', 'icon3')">
               <div id="icon3"><span style="font-size:20px;">🔒</span><div style="font-size:11px; font-weight:700; margin-top:3px;">3. รูปก่อนคลุมผ้า (ให้เห็นปริมาณขยะก่อนคลุมผ้า)</div></div>
               <img id="p3">
               <div class="compressing" id="compressing3">⏳ กำลังย่อรูป...</div>
@@ -314,7 +315,7 @@
           </div>
           <div class="col">
             <div class="photo-upload-box">
-              <input type="file" id="photo4" accept="image/*" capture="environment" onchange="previewImg(this, 'p4', 'icon4')">
+              <input type="file" id="photo4" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onchange="previewImg(this, 'p4', 'icon4')">
               <div id="icon4"><span style="font-size:20px;">🧾</span><div style="font-size:11px; font-weight:700; margin-top:3px;">4. รูปบิล (ให้อ่านเลขที่บิลได้)</div></div>
               <img id="p4">
               <div class="compressing" id="compressing4">⏳ กำลังย่อรูป...</div>
@@ -1168,9 +1169,10 @@ function handleFormSubmit(e) {
   };
 
   Promise.all([
-    compressImage($('photo1').files[0]),
-    compressImage($('photo2').files[0]),
-    compressImage($('photo3').files[0]),
+    // ทุกรูป: ย่ออย่างเดียว ไม่ครอป — รูปจากแอปกล้อง timestamp ต้องเห็นวันเวลาที่มุมรูปครบ
+    compressWhole($('photo1').files[0]),
+    compressWhole($('photo2').files[0]),
+    compressWhole($('photo3').files[0]),
     compressWhole($('photo4').files[0])
   ]).then(images => {
     formData.photo1 = images[0];

@@ -103,7 +103,18 @@
   /* มือถือ: เหลือแค่ไอคอนบ้าน */
   @media (max-width:520px){
     .hub-home-fab span{ display:none; }
-    header.topbar .topbar-inner{ padding-left:64px; }
+    header.topbar .topbar-inner{ padding-left:64px; flex-wrap:wrap; row-gap:8px; padding-top:10px; padding-bottom:10px; }
+    /* มือถือ: ชื่อระบบเต็มแถว ปุ่มภาษาลงแถวถัดไป (เดิมชื่อถูกบีบจนตกบรรทัดทีละคำ) */
+    .brand{ flex:1 1 100%; }
+    .brand-mark{ width:32px; height:32px; font-size:18px; }
+    .brand-title{ font-size:14px; }
+    .langswitch{ margin-left:auto; }
+    /* แถบปุ่มล่าง: ข้อความบันทึกอัตโนมัติขึ้นแถวบน ปุ่มล้าง/พิมพ์เหลือแค่ไอคอน */
+    .bottombar-inner{ flex-wrap:wrap; row-gap:6px; }
+    .bottombar-inner .autosave{ flex:1 1 100%; }
+    .bottombar-inner .btn-outline span{ display:none; }
+    .bottombar-inner .btn-outline{ padding:11px 13px; }
+    .bottombar-inner .btn-primary{ flex:1; justify-content:center; }
   }
 
   /* Tabs */
@@ -1012,7 +1023,7 @@
         html += '      <div class="photo-row">';
         html += '        <span class="photo-label">' + t('photoLabel') + '</span>';
         html += '        <label class="photo-add-btn">' + ICONS.camera + '<span>' + t('photoAdd') + '</span>';
-        html += '          <input type="file" accept="image/*" multiple capture="environment" data-photo-input="' + id + '" style="display:none">';
+        html += '          <input type="file" accept="image/*" multiple data-photo-input="' + id + '" style="display:none">';
         html += '        </label>';
         if(it.photos && it.photos.length){
           html += '        <div class="photo-thumbs">';
