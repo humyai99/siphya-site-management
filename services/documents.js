@@ -63,7 +63,7 @@ async function DOCS_list(req) {
   if (!system || system === 'npo') {
     const r = await sitePool.query(
       `SELECT n.id, n.npo_no, n.truck_type, p.name AS project, ${fmt('n.date_from')} AS d1, ${fmt('n.date_to')} AS d2,
-              n.trip_count, n.total_cost, n.pdf_path, n.status, n.cancel_reason, n.created_by,
+              n.trip_count, n.total_cost, n.pdf_path, n.status, n.cancel_reason, n.created_by, n.cancelled_by,
               n.receiver_name, n.approver_name, ${fmtTs('n.created_at')} AS created, n.created_at
          FROM npo_reports n LEFT JOIN projects p ON p.id = n.project_id
         WHERE n.pdf_path IS NOT NULL AND n.pdf_path <> ''
@@ -77,7 +77,7 @@ async function DOCS_list(req) {
       people: [x.trip_count + ' เที่ยว · ' + Number(x.total_cost).toLocaleString('th-TH') + ' บาท',
         x.receiver_name && 'ผู้รับ ' + x.receiver_name, x.approver_name && 'ผู้อนุมัติ ' + x.approver_name].filter(Boolean).join(' · '),
       by: x.created_by || '', created: x.created, status: x.status === 'cancelled' ? 'old' : 'current',
-      statusLabel: x.status === 'cancelled' ? 'ยกเลิก' + (x.cancel_reason ? ' — ' + x.cancel_reason : '') : 'ออกแล้ว',
+      statusLabel: x.status === 'cancelled' ? 'ยกเลิก' + (x.cancel_reason ? ' — ' + x.cancel_reason : '') + (x.cancelled_by ? ' (โดย ' + x.cancelled_by + ')' : '') : 'ออกแล้ว',
       url: encodeURI(x.pdf_path), _sort: x.created_at
     }));
   }

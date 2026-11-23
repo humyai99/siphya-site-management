@@ -109,3 +109,6 @@ ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_confirmed_by TEXT;
 ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_confirmed_at TIMESTAMPTZ;
 ALTER TABLE waste_records ADD COLUMN IF NOT EXISTS warn_detail TEXT;
 CREATE INDEX IF NOT EXISTS waste_records_proj_day_idx ON waste_records (project_id, record_date);
+
+-- ผู้ยกเลิก NPO (แสดงในรายการ NPO ที่เคยออก พร้อมเหตุผลและเวลา)
+ALTER TABLE npo_reports ADD COLUMN IF NOT EXISTS cancelled_by TEXT;

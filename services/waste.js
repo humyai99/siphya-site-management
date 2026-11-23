@@ -699,8 +699,9 @@ async function WASTE_npoList(projectId) {
   const r = await sitePool.query(
     `SELECT n.id, n.npo_no, n.truck_type, TO_CHAR(n.date_from,'DD/MM/YYYY') AS date_from,
             TO_CHAR(n.date_to,'DD/MM/YYYY') AS date_to, n.trip_count, n.total_cost::float AS total_cost,
-            n.seq_start, n.status, n.cancel_reason, n.created_by,
+            n.seq_start, n.status, n.cancel_reason, n.created_by, COALESCE(n.cancelled_by, '') AS cancelled_by,
             TO_CHAR(n.created_at AT TIME ZONE 'Asia/Bangkok','DD/MM/YYYY HH24:MI') AS created_at,
+            TO_CHAR(n.cancelled_at AT TIME ZONE 'Asia/Bangkok','DD/MM/YYYY HH24:MI') AS cancelled_at,
             p.name AS project
        FROM npo_reports n JOIN projects p ON p.id = n.project_id
       WHERE ($1::int IS NULL OR n.project_id = $1)
@@ -713,6 +714,7 @@ async function WASTE_npoCancel(req) {
   const id = Number(req.npoId);
   const reason = str(req.reason, 300);
   if (!reason) throw new UserError('กรุณาระบุเหตุผลที่ยกเลิก');
+  const by = (this && this.user && (this.user.full_name || this.user.username)) || '';
   let oldPdf = null;
   await withTx(async client => {
     const r = await client.query('SELECT status, pdf_path FROM npo_reports WHERE id = $1 FOR UPDATE', [id]);
@@ -721,8 +723,8 @@ async function WASTE_npoCancel(req) {
     oldPdf = r.rows[0].pdf_path;
     await client.query('UPDATE waste_records SET npo_id = NULL WHERE npo_id = $1', [id]);
     await client.query(
-      `UPDATE npo_reports SET status = 'cancelled', cancel_reason = $2, cancelled_at = NOW(), pdf_path = NULL WHERE id = $1`,
-      [id, reason]);
+      `UPDATE npo_reports SET status = 'cancelled', cancel_reason = $2, cancelled_at = NOW(), cancelled_by = $3, pdf_path = NULL WHERE id = $1`,
+      [id, reason, by]);
   });
   if (oldPdf) fs.promises.unlink(path.join(PUBLIC_DIR, oldPdf)).catch(() => {});
   return true;
