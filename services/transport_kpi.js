@@ -48,8 +48,7 @@ async function TRANSPORT_kpi(projectCode) {
     `SELECT l.id, TO_CHAR(l.request_date, 'YYYY-MM-DD') AS req, TO_CHAR(l.receive_date, 'YYYY-MM-DD') AS rec,
             COALESCE(l.status, '') AS status, COALESCE(l.mat_item, '') AS item, COALESCE(l.building, '') AS building,
             COALESCE(l.floor, '') AS floor, l.quantity::float AS qty, COALESCE(l.unit, '') AS unit,
-            COALESCE(l.requester_receiver, '') AS requester, COALESCE(l.source, '') AS source,
-            TO_CHAR(l.created_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD') AS entered,
+            COALESCE(l.requester_receiver, '') AS requester,
             (d.doc_no IS NOT NULL) AS "hasDoc"
        FROM material_transport_logs l
        LEFT JOIN transport_docs d ON d.project_code = l.project_code AND d.doc_no = l.doc_no
@@ -67,12 +66,9 @@ async function TRANSPORT_kpi(projectCode) {
     } else {
       state = 'pending';
     }
-    // กรอกทันเวลา: กรอกในระบบภายในกำหนดเดียวกับการส่ง (2 วันทำการหลังวันที่ออกใบเบิก)
-    // นับเฉพาะรายการที่กรอกบนเว็บ (นำเข้าจากชีตไม่รู้วันที่กรอกจริง)
-    const timely = x.source === 'web' ? (x.entered <= due) : null;
     return { id: x.id, month: x.req.slice(0, 7), req: x.req, rec: x.rec || '', due, state, lateDays,
       item: x.item, building: x.building, floor: x.floor, qty: x.qty, unit: x.unit, requester: x.requester,
-      hasDoc: x.hasDoc, timely };
+      hasDoc: x.hasDoc };
   });
   return { slaDays: SLA_DAYS, today, rows };
 }
