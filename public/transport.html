@@ -183,6 +183,7 @@
       </div>
       <div class="sla-tiles" id="slaTiles"></div>
       <div id="slaLate"></div>
+      <div id="slaUrgent"></div>
     </div>
 
     <div class="charts-row">
@@ -223,7 +224,7 @@
 
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="/vendor/chart.umd.js"></script><!-- Chart.js 4.4.1 เก็บในระบบเอง ไม่พึ่งเน็ตภายนอก -->
   <script>
     var ALL_ROWS = [];
     var ALL_HEADERS = [];
@@ -362,8 +363,8 @@
       document.getElementById('updatedAtLabel').textContent = 'อัปเดตล่าสุด: ' + new Date(res.updatedAt).toLocaleString('th-TH');
       populateFilterOptions();
       renderDataTableHeader();
-      applyFilters();
-      loadSla();
+      loadSla();   // KPI ก่อน — ถ้าวาดกราฟพัง กล่อง KPI ยังขึ้น
+      try { applyFilters(); } catch (e) { console.error('[dashboard] วาดกราฟไม่สำเร็จ', e); }
     }
 
     // ---------- KPI ส่งภายใน 2 วันทำการ ----------
@@ -415,6 +416,17 @@
             '<td>' + slaEsc(r.building) + (r.floor ? ' ชั้น ' + slaEsc(r.floor) : '') + '</td><td>' + slaEsc(r.requester) + '</td></tr>';
         }).join('') + '</tbody></table></div>' + (bad.length > 100 ? '<div class="doc-hint">แสดง 100 รายการที่ช้าที่สุด</div>' : '')
         : (judged ? '<div class="sla-good" style="font-weight:600">✅ ไม่มีรายการส่งช้าหรือค้างเกินกำหนด</div>' : '');
+      // เบิกด่วน (เบิกและรับวันเดียวกัน) แยกตามผู้ขอเบิก — นับเป็นส่งตรงเวลาใน KPI แต่ไว้ดูว่าใครเบิกด่วนบ่อย
+      var urgent = rows.filter(function (r) { return r.urgent; });
+      var byReq = {};
+      urgent.forEach(function (r) { var k = r.requester || '(ไม่ระบุผู้ขอเบิก)'; byReq[k] = (byReq[k] || 0) + 1; });
+      var reqList = Object.keys(byReq).map(function (k) { return [k, byReq[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+      document.getElementById('slaUrgent').innerHTML = !urgent.length ? '' :
+        '<h4 style="margin:16px 0 6px;font-size:14px">เบิกด่วน ' + urgent.length + ' รายการ (' + pct(urgent.length, rows.length) + '% ของรายการทั้งหมด) — แยกตามผู้ขอเบิก' +
+        ' <small style="font-weight:400;color:#6b7280">นับเป็นส่งตรงเวลาใน KPI</small></h4>' +
+        '<div class="table-scroll"><table class="summary sla-late"><thead><tr><th>ผู้ขอเบิก</th><th style="text-align:right">เบิกด่วน (รายการ)</th></tr></thead><tbody>' +
+        reqList.map(function (x) { return '<tr><td>' + slaEsc(x[0]) + '</td><td style="text-align:right">' + x[1] + '</td></tr>'; }).join('') +
+        '</tbody></table></div>';
     }
 
     function populateFilterOptions() {
@@ -537,6 +549,7 @@
     }
 
     function renderDonut(canvasId, legendId, dataMap, palette, useStatusColors) {
+      if (typeof Chart === 'undefined') return;   // โหลดไฟล์กราฟไม่ได้ → ข้ามกราฟ ส่วนอื่นยังทำงาน
       var labels = Object.keys(dataMap);
       var values = labels.map(function (l) { return dataMap[l]; });
       var total = values.reduce(function (a, b) { return a + b; }, 0);
@@ -567,6 +580,7 @@
     }
 
     function renderBarTop(rows) {
+      if (typeof Chart === 'undefined') return;   // โหลดไฟล์กราฟไม่ได้ → ข้ามกราฟ ส่วนอื่นยังทำงาน
       var qtySums = groupSum(rows, 'ประเภทวัสดุ', QTY_FIELD);
       var hasQty = Object.keys(qtySums).some(function (k) { return qtySums[k] > 0; });
       var source = hasQty ? qtySums : groupCount(rows, 'ประเภทวัสดุ');

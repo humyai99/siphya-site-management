@@ -59,7 +59,10 @@
     .grid2 { display: grid; grid-template-columns: 90px 1fr 120px 90px; gap: 8px; align-items: end; }
     .bld { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; display: grid; grid-template-columns: 160px 1fr 70px; gap: 8px; }
     .bld textarea { height: 60px; }
-    .modal .row-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    .modal .row-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; align-items: center; }
+    table.trash { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    table.trash th, table.trash td { border-bottom: 1px solid var(--line); padding: 6px 7px; text-align: left; white-space: nowrap; }
+    table.trash th { background: #F2F4F8; position: sticky; top: 0; }
     @media (max-width: 700px) { .top { padding-left: 16px; padding-top: 60px; } .grid2 { grid-template-columns: 1fr 1fr; } }
   </style>
 </head>
@@ -73,6 +76,7 @@
     <button class="btn" id="btnAdd">+ เพิ่ม 5 แถว</button>
     <button class="btn main" id="btnSave" disabled>💾 บันทึก</button>
     <button class="btn danger" id="btnDel">ลบแถวที่เลือก</button>
+    <button class="btn" id="btnTrash" title="แถวที่ลบไปแล้ว กู้คืนได้">🗑 รายการที่ลบแล้ว</button>
     <button class="btn" id="btnDocs" title="เลือกไฟล์ PDF ใบเบิกได้หลายไฟล์ ระบบอ่านเลขที่/วันที่/Mat. Code แล้วจับคู่แถวให้">📎 แนบใบเบิก (หลายไฟล์)</button>
     <input type="file" id="docFiles" accept="application/pdf,.pdf" multiple style="display:none">
     <input type="file" id="docOne" accept="application/pdf,.pdf" style="display:none">
@@ -130,6 +134,19 @@
     <h2>📎 ผลการแนบใบเบิก</h2>
     <div id="docReport"></div>
     <div class="row-actions"><button class="btn main" id="docClose">ปิด</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="trashBg">
+  <div class="modal" style="max-width:980px">
+    <h2>🗑 รายการที่ลบแล้ว <span id="trashScope" style="font-weight:400;font-size:13px;color:var(--soft)"></span></h2>
+    <div class="hint" style="margin:0 0 10px">ติ๊กแถวที่ต้องการแล้วกด "กู้คืน" — แถวกลับเข้าระบบตามเดิม (รวมเลขที่ใบเบิก) และนับใน KPI อีกครั้ง</div>
+    <div style="overflow-x:auto;max-height:60vh"><table class="trash">
+      <thead><tr><th><input type="checkbox" id="trashAll"></th><th>ลบเมื่อ</th><th>ลบโดย</th><th>วันที่เบิก</th><th>วันที่รับ</th>
+        <th>Mat. Code</th><th>รายการ</th><th>อาคาร/ชั้น</th><th>จำนวน</th><th>ผู้ขอเบิก</th><th>เลขที่ใบเบิก</th></tr></thead>
+      <tbody id="trashTb"></tbody>
+    </table></div>
+    <div class="row-actions"><span class="spacer" id="trashMsg" style="color:var(--soft);font-size:12.5px"></span>
+      <button class="btn" id="trashClose">ปิด</button><button class="btn main" id="trashRestore">↩ กู้คืนแถวที่เลือก</button></div>
   </div>
 </div>
 <div class="hub-toast" id="hubToast"></div>
@@ -317,11 +334,38 @@
     var sel = S.rows.filter(function (r) { return r.chk; });
     if (!sel.length) { msg('ติ๊กช่องหน้าแถวที่ต้องการลบก่อน'); return; }
     var ids = sel.filter(function (r) { return r.id; }).map(function (r) { return r.id; });
-    if (!confirm('ลบ ' + sel.length + ' แถว?' + (ids.length ? '\n(ลบจากระบบถาวร ' + ids.length + ' แถว)' : ''))) return;
+    if (!confirm('ลบ ' + sel.length + ' แถว?' + (ids.length ? '\n(แถวที่บันทึกแล้ว ' + ids.length + ' แถวจะไปอยู่ใน "🗑 รายการที่ลบแล้ว" กู้คืนได้)' : ''))) return;
     S.rows = S.rows.filter(function (r) { return !r.chk || r.id; });
     if (!ids.length) { render(); return; }
     run().withSuccessHandler(function (res) { load(S.code, 'ลบ ' + res.deleted + ' แถวแล้ว'); })
       .withFailureHandler(function (e) { msg(e.message); }).TRANSPORT_deleteRows(S.code, ids);
+  };
+
+  // ---------- ถังขยะ: แถวที่ลบแล้ว ----------
+  function loadTrash() {
+    $('trashTb').innerHTML = '<tr><td colspan="11" style="color:var(--soft)">กำลังโหลด...</td></tr>'; $('trashMsg').textContent = '';
+    $('trashScope').textContent = '— ' + ($('project').selectedOptions[0] ? $('project').selectedOptions[0].text : S.code);
+    run().withSuccessHandler(function (rows) {
+      $('trashAll').checked = false;
+      $('trashTb').innerHTML = rows.length ? rows.map(function (r) {
+        return '<tr><td><input type="checkbox" class="trashChk" value="' + r.id + '"></td><td>' + esc(r.deletedAt) + '</td><td>' + esc(r.deletedBy || '-') + '</td>' +
+          '<td>' + dmy(r.requestDate) + '</td><td>' + (r.receiveDate ? dmy(r.receiveDate) : '-') + '</td><td>' + esc(r.matCode) + '</td><td>' + esc(r.item) + '</td>' +
+          '<td>' + esc(r.building) + (r.floor ? ' ชั้น ' + esc(r.floor) : '') + '</td><td>' + esc(r.qty || '') + ' ' + esc(r.unit) + '</td>' +
+          '<td>' + esc(r.requester) + '</td><td>' + esc(r.docNo) + '</td></tr>';
+      }).join('') : '<tr><td colspan="11" style="color:var(--soft)">ไม่มีรายการที่ลบในโครงการนี้</td></tr>';
+    }).withFailureHandler(function (e) { $('trashTb').innerHTML = '<tr><td colspan="11">' + esc(e.message) + '</td></tr>'; }).TRANSPORT_listDeleted(S.code);
+  }
+  $('btnTrash').onclick = function () { $('trashBg').style.display = 'flex'; loadTrash(); };
+  $('trashClose').onclick = function () { $('trashBg').style.display = 'none'; };
+  $('trashAll').onchange = function () { var on = this.checked; document.querySelectorAll('.trashChk').forEach(function (c) { c.checked = on; }); };
+  $('trashRestore').onclick = function () {
+    var ids = Array.prototype.map.call(document.querySelectorAll('.trashChk:checked'), function (c) { return Number(c.value); });
+    if (!ids.length) { $('trashMsg').textContent = 'ติ๊กแถวที่ต้องการกู้คืนก่อน'; return; }
+    if (S.rows.some(function (r) { return r.dirty; }) && !confirm('มีแถวที่ยังไม่บันทึกในตาราง — กู้คืนแล้วตารางจะโหลดใหม่ แถวที่ยังไม่บันทึกจะหาย ทำต่อ?')) return;
+    run().withSuccessHandler(function (res) {
+      $('trashBg').style.display = 'none';
+      load(S.code, 'กู้คืน ' + res.restored + ' แถวแล้ว');
+    }).withFailureHandler(function (e) { $('trashMsg').textContent = e.message; }).TRANSPORT_restoreRows(S.code, ids);
   };
 
   // ---------- ใบเบิก (PDF) ----------

@@ -68,7 +68,7 @@ async function TRANSPORT_kpi(projectCode) {
     }
     return { id: x.id, month: x.req.slice(0, 7), req: x.req, rec: x.rec || '', due, state, lateDays,
       item: x.item, building: x.building, floor: x.floor, qty: x.qty, unit: x.unit, requester: x.requester,
-      hasDoc: x.hasDoc };
+      hasDoc: x.hasDoc, urgent: x.status === 'เบิกด่วน' };
   });
   return { slaDays: SLA_DAYS, today, rows };
 }

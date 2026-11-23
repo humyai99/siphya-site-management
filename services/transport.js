@@ -14,6 +14,7 @@
 //   TRANSPORT_getProjects(), TRANSPORT_getReportMeta(code), TRANSPORT_getLogData(code)
 // หน้ากรอก (public/transport-entry.html — ใหม่)
 //   TRANSPORT_entryData(code), TRANSPORT_getMaster(), TRANSPORT_saveRows(code, rows), TRANSPORT_deleteRows(code, ids)
+//   TRANSPORT_listDeleted(code), TRANSPORT_restoreRows(code, ids)   ถังขยะ: ลบแล้วกู้คืนได้ (ตาราง transport_deleted_rows)
 // ตั้งค่า (admin)
 //   TRANSPORT_saveProject(p), TRANSPORT_saveBuildings(code, buildings)
 // ============================================================
@@ -256,12 +257,59 @@ async function TRANSPORT_saveRows(projectCode, rows) {
   return { saved };
 }
 
+// ลบ = ย้ายทั้งแถวไปถังขยะ (transport_deleted_rows) แล้วลบจากตารางหลัก → กู้คืนได้ เก็บชื่อผู้ลบ
 async function TRANSPORT_deleteRows(projectCode, ids) {
   const code = codeOf(projectCode);
   const list = (Array.isArray(ids) ? ids : []).map(Number).filter(n => n > 0);
   if (!list.length) throw new UserError('ไม่ได้เลือกแถวที่จะลบ');
-  const r = await sitePool.query('DELETE FROM material_transport_logs WHERE project_code = $1 AND id = ANY($2)', [code, list]);
-  return { deleted: r.rowCount };
+  const by = userName(this);
+  const n = await withTx(async client => {
+    await client.query(
+      `INSERT INTO transport_deleted_rows (log_id, project_code, row, deleted_by)
+       SELECT l.id, l.project_code, to_jsonb(l), $3 FROM material_transport_logs l
+        WHERE l.project_code = $1 AND l.id = ANY($2)`, [code, list, by]);
+    const r = await client.query('DELETE FROM material_transport_logs WHERE project_code = $1 AND id = ANY($2)', [code, list]);
+    return r.rowCount;
+  });
+  return { deleted: n };
+}
+
+// แถวที่ลบแล้วของโครงการ (ใหม่สุดก่อน)
+async function TRANSPORT_listDeleted(projectCode) {
+  const code = codeOf(projectCode);
+  const r = await sitePool.query(
+    `SELECT id, deleted_by AS "deletedBy",
+            TO_CHAR(deleted_at AT TIME ZONE 'Asia/Bangkok', 'DD/MM/YYYY HH24:MI') AS "deletedAt",
+            row->>'request_date' AS "requestDate", row->>'receive_date' AS "receiveDate",
+            COALESCE(row->>'mat_code', '') AS "matCode", COALESCE(row->>'mat_item', '') AS item,
+            COALESCE(row->>'building', '') AS building, COALESCE(row->>'floor', '') AS floor,
+            row->>'quantity' AS qty, COALESCE(row->>'unit', '') AS unit,
+            COALESCE(row->>'requester_receiver', '') AS requester, COALESCE(row->>'doc_no', '') AS "docNo"
+       FROM transport_deleted_rows WHERE project_code = $1
+      ORDER BY deleted_at DESC, id DESC LIMIT 300`, [code]);
+  return r.rows;
+}
+
+// กู้คืน: ใส่แถวกลับด้วย id เดิม แล้วเอาออกจากถังขยะ
+async function TRANSPORT_restoreRows(projectCode, ids) {
+  const code = codeOf(projectCode);
+  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(n => n > 0);
+  if (!list.length) throw new UserError('ไม่ได้เลือกแถวที่จะกู้คืน');
+  const by = userName(this);
+  const n = await withTx(async client => {
+    const rows = (await client.query(
+      'SELECT id, log_id, row FROM transport_deleted_rows WHERE project_code = $1 AND id = ANY($2) FOR UPDATE', [code, list])).rows;
+    for (const d of rows) {
+      const exists = (await client.query('SELECT 1 FROM material_transport_logs WHERE id = $1', [d.log_id])).rows.length;
+      if (exists) throw new UserError('แถวนี้มีอยู่ในระบบแล้ว (อาจกู้คืนไปแล้ว)');
+      await client.query(
+        `INSERT INTO material_transport_logs SELECT * FROM jsonb_populate_record(NULL::material_transport_logs, $1::jsonb)`, [d.row]);
+      await client.query('UPDATE material_transport_logs SET updated_at = NOW(), updated_by = $2 WHERE id = $1', [d.log_id, by]);
+      await client.query('DELETE FROM transport_deleted_rows WHERE id = $1', [d.id]);
+    }
+    return rows.length;
+  });
+  return { restored: n };
 }
 
 // ============================================================
@@ -321,6 +369,7 @@ module.exports = {
   functions: {
     TRANSPORT_getProjects, TRANSPORT_getReportMeta, TRANSPORT_getLogData,
     TRANSPORT_entryData, TRANSPORT_getMaster, TRANSPORT_saveRows, TRANSPORT_deleteRows,
+    TRANSPORT_listDeleted, TRANSPORT_restoreRows,
     TRANSPORT_listProjects, TRANSPORT_saveProject, TRANSPORT_saveBuildings
   }
 };

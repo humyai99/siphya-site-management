@@ -79,3 +79,16 @@ CREATE TABLE IF NOT EXISTS transport_holidays (
   holiday_date DATE PRIMARY KEY,
   name         TEXT DEFAULT ''
 );
+
+-- ถังขยะของแถวที่ลบ (23 พ.ย. 2569) — ลบแล้วกู้คืนได้ เก็บว่าใครลบ / เมื่อไร
+-- แยกตาราง (ไม่ใช่ flag ในตารางหลัก) เพื่อให้รายงาน / KPI / นับใบเบิก ทุกที่ไม่ต้องกรองแถวที่ลบ
+-- row = ข้อมูลทั้งแถวตอนลบ (to_jsonb) · กู้คืน = ใส่กลับด้วย id เดิม
+CREATE TABLE IF NOT EXISTS transport_deleted_rows (
+  id           SERIAL PRIMARY KEY,
+  log_id       INTEGER NOT NULL,
+  project_code TEXT NOT NULL,
+  row          JSONB NOT NULL,
+  deleted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_by   TEXT
+);
+CREATE INDEX IF NOT EXISTS transport_deleted_rows_project_idx ON transport_deleted_rows (project_code, deleted_at DESC);
