@@ -124,7 +124,7 @@ router.get('/waste/excel', async (req, res) => {
     const headers = [
       'วันที่', 'โครงการ', 'เลขที่บิล', 'ทะเบียนรถ', 'ประเภทรถ', 
       'เที่ยว', 'ปริมาตร (m³)', 'ค่าใช้จ่าย (บาท)', 
-      'รูปหน้ารถ', 'รูปกองขยะ', 'รูปผ้าใบคลุม', 'ผู้บันทึก'
+      'รูปหน้ารถ', 'รูปกองขยะ', 'รูปก่อนคลุมผ้า', 'ผู้บันทึก'
     ];
     sheet.getRow(3).values = headers;
     sheet.getRow(3).font = { name: 'Tahoma', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -153,7 +153,7 @@ router.get('/waste/excel', async (req, res) => {
         parseFloat(r.cost) || 0,
         r.photo_front_url ? { text: '📷 ดูรูปหน้ารถ', hyperlink: r.photo_front_url } : '-',
         r.photo_waste_url ? { text: '📷 ดูรูปกองขยะ', hyperlink: r.photo_waste_url } : '-',
-        r.photo_canvas_url ? { text: '📷 ดูรูปผ้าใบ', hyperlink: r.photo_canvas_url } : '-',
+        r.photo_canvas_url ? { text: '📷 ดูรูปก่อนคลุมผ้า', hyperlink: r.photo_canvas_url } : '-',
         r.recorder || '-'
       ];
 
@@ -256,7 +256,7 @@ router.get('/waste/pdf', async (req, res) => {
       const photos = [
         { label: '[รูปหน้ารถ]', url: r.photo_front_url },
         { label: '[รูปกองขยะ]', url: r.photo_waste_url },
-        { label: '[รูปผ้าใบ]', url: r.photo_canvas_url }
+        { label: '[รูปก่อนคลุมผ้า]', url: r.photo_canvas_url }
       ];
 
       doc.font('ThaiRegular').fontSize(9).fillColor('#2F5D9E');
@@ -378,7 +378,7 @@ router.get('/waste/print', async (req, res) => {
         <div class="photo-grid">
           ${r.photo_front_url ? `<img src="${r.photo_front_url}" class="photo-thumb" alt="หน้ารถ" title="หน้ารถ" onerror="this.style.display='none'">` : ''}
           ${r.photo_waste_url ? `<img src="${r.photo_waste_url}" class="photo-thumb" alt="กองขยะ" title="กองขยะ" onerror="this.style.display='none'">` : ''}
-          ${r.photo_canvas_url ? `<img src="${r.photo_canvas_url}" class="photo-thumb" alt="ผ้าใบ" title="ผ้าใบ" onerror="this.style.display='none'">` : ''}
+          ${r.photo_canvas_url ? `<img src="${r.photo_canvas_url}" class="photo-thumb" alt="ก่อนคลุมผ้า" title="ก่อนคลุมผ้า" onerror="this.style.display='none'">` : ''}
         </div>
       </div>
     `).join('')}

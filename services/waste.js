@@ -848,7 +848,7 @@ async function buildNpoPdf(client, npoId) {
           <td colspan="4">${esc(thaiRange(h.f, h.t))}</td></tr>
       <tr class="t2"><td colspan="11">โครงการ ${esc(h.project)}</td></tr>
       <tr><th>ลำดับ</th><th>วัน/เดือน/ปี</th><th>เวลาเข้า</th><th>เวลาออก</th><th>เลขที่บิล</th><th>เลขทะเบียนรถ</th>
-          <th>ราคา</th><th>จำนวนเที่ยว</th><th>รูปหน้ารถ (เห็นป้ายทะเบียน)</th><th>รูปขยะในรถ</th><th>รูปหลังคลุมผ้าใบ</th></tr>
+          <th>ราคา</th><th>จำนวนเที่ยว</th><th>รูปหน้ารถ (เห็นป้ายทะเบียน)</th><th>รูปขยะในรถ</th><th>รูปก่อนคลุมผ้า</th></tr>
     </thead>
     <tbody>${body}
       <tr class="sum"><td colspan="5"></td><td style="text-align:right">รวม</td><td class="num">${fmt(totalCost)}</td><td class="num">${totalTrips}</td><td colspan="3"></td></tr>
