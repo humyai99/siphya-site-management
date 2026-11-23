@@ -1,4 +1,4 @@
-# สรุปสำหรับ IT — ระบบหน้างาน (Site Management Hub) บน Node.js + PostgreSQL
+# สรุปสำหรับ MIS — ระบบหน้างาน (Site Management Hub) บน Node.js + PostgreSQL
 
 | ระบบ | หน้าเว็บ | ข้อมูล | คู่มือ |
 |---|---|---|---|
@@ -10,11 +10,11 @@
 | ขนส่งวัสดุในไซต์ | `/transport`, `/transport-entry` | **ข้อมูลจริง** นำเข้าจาก Google Sheet | [TRANSPORT_SETUP.md](TRANSPORT_SETUP.md) |
 
 ## หลักการที่ใช้
-- ไม่แก้ระบบ login เดิม ทุกหน้าใหม่ใช้ `authenticateToken` ของ IT (JWT cookie)
+- ไม่แก้ระบบ login เดิม ทุกหน้าใหม่ใช้ `authenticateToken` ของ MIS (JWT cookie)
 - หน้าเว็บเดิมจาก Apps Script เรียก `google.script.run` → ใช้ `public/js/gas-shim.js` แปลงเป็น `POST /api/gas` `{fn, args}`
   ฝั่ง server เรียกได้เฉพาะฟังก์ชันใน allowlist (`routes/gas.js`)
 - migration ทุกตัวเป็น SQL แบบรันซ้ำได้ (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`) **ไม่ลบข้อมูลเดิม**
-- ตารางเดิมของ IT ที่ถูกใช้/เพิ่มคอลัมน์: `projects`, `waste_records`, `vehicle_transport_requests`, `material_transport_logs`
+- ตารางเดิมของ MIS ที่ถูกใช้/เพิ่มคอลัมน์: `projects`, `waste_records`, `vehicle_transport_requests`, `material_transport_logs`
 - API เดิม (`/api/transport/logs`, `/api/route/logs` ฯลฯ) ยังใช้ได้เหมือนเดิม
 - เพิ่ม role ผู้ใช้ `checklist` (ผู้ดูแลพื้นที่ — ใช้ได้แค่ระบบเช็คลิสต์) และ `signer` (ลงนามเช็คลิสต์อย่างเดียว): `middleware/role_guard.js` ติดตั้งใน `server.js` ก่อน static —
   บัญชี role อื่นไม่ได้รับผลกระทบ · admin สร้าง/แก้บัญชีและสิทธิ์ลงนามที่หน้า `/users` (ปุ่ม "จัดการผู้ใช้งาน" ใน /admin ชี้ไปหน้านี้แทน modal เดิม — modal เดิมยังอยู่ในโค้ดแต่ไม่ได้ใช้)
@@ -55,7 +55,7 @@ npm start
 
 ## ⚠️ ก่อนเปิดใช้จริง
 1. ตั้ง repo เป็น **private**
-2. บัญชีผู้ใช้ — IT สร้างแค่ **admin 2 บัญชี**: ของผู้ใช้งานหลัก (username/ชื่อ แจ้งใน PR) + admin สำรองของ IT
+2. บัญชีผู้ใช้ — MIS สร้างแค่ **admin 2 บัญชี**: ของผู้ใช้งานหลัก (username/ชื่อ แจ้งใน PR) + admin สำรองของ MIS
    ตั้งรหัสชั่วคราวแล้วแจ้งทางช่องทางส่วนตัว (ไม่เขียนใน PR/repo) — ผู้ใช้งานหลักเปลี่ยนรหัสเองที่ `/users`
    จากนั้น **ลบบัญชีตั้งต้น `admin` / `staff`** และ **ลบปุ่ม login ตัวอย่าง** ในหน้า `/login` (กดแล้วเข้าเป็น admin ได้ทันที)
    บัญชีอื่นทั้งหมด (ธุรการ / ผู้ดูแลพื้นที่ / GF-GE) ผู้ใช้งานหลักสร้างเองที่ `/users`
@@ -76,12 +76,12 @@ npm start
 
 ## อัปเดตรอบถัดไป (หลังเปิดใช้จริง)
 ผู้ใช้งานหลักแก้โค้ด → ทดสอบในเครื่องตัวเอง → ส่ง Pull Request (ในข้อความ PR จะระบุสคริปต์ migrate ที่ต้องรัน)
-ฝั่ง IT ทำทุกรอบ:
+ฝั่ง MIS ทำทุกรอบ:
 1. **สำรองก่อน**: ฐานข้อมูล (`pg_dump`) + `storage/` + `public/uploads/`
 2. merge PR → ดึงโค้ดบน server (`git pull`)
 3. `npm install` (เฉพาะรอบที่ `package.json` เปลี่ยน)
 4. รัน `node scripts/migrate_*.js` ตามที่ PR ระบุ — ทุกตัวแค่เพิ่มตาราง/คอลัมน์ รันซ้ำได้ ไม่ลบข้อมูล
 5. restart (`pm2 restart <ชื่อ>` หรือ systemd) — ระบบหยุดไม่กี่วินาที · แจ้งผู้ใช้กด Ctrl+F5
 6. มีปัญหา → `git checkout` กลับ commit ก่อนหน้า + restart (ถ้า migrate ไปแล้วไม่ต้องย้อน DB — คอลัมน์ที่เพิ่มไม่กระทบโค้ดเก่า)
-- ข้อมูลบนเว็บ (บัญชีผู้ใช้, อาคาร/ชั้น, วันหยุด, ราคารถขยะ, ยกเลิก NPO, กู้คืนแถว) admin แก้เองบนเว็บ ไม่ต้องรอ IT
+- ข้อมูลบนเว็บ (บัญชีผู้ใช้, อาคาร/ชั้น, วันหยุด, ราคารถขยะ, ยกเลิก NPO, กู้คืนแถว) admin แก้เองบนเว็บ ไม่ต้องรอ MIS
 - ส่งงานแก้เป็นรอบ (เช่น สัปดาห์ละครั้ง) ยกเว้นเรื่องเร่งด่วนที่หน้างานใช้งานไม่ได้
