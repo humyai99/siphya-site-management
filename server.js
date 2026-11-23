@@ -17,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 // บัญชี "ลงนามอย่างเดียว" (GF/GE) เข้าได้เฉพาะเช็คลิสต์ — ต้องอยู่ก่อน static และ route ทั้งหมด
 app.use(require('./middleware/role_guard').roleGuard);
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/fonts', express.static(path.join(__dirname, 'fonts'), { maxAge: '30d' })); // ฟอนต์ไทยของใบพิมพ์ (ไม่พึ่งเน็ตภายนอก)
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));

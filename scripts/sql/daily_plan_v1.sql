@@ -88,3 +88,7 @@ ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_complete BOOLEAN;
 ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_date DATE;
 ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_uploaded_by TEXT;
 ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS signed_uploaded_at TIMESTAMPTZ;
+
+-- "ไม่นับ" ยึดตามที่ PE/PM ติ๊กในใบเซ็น (เลือกตอนส่งใบเซ็น) · admin แก้ได้คนเดียว · เก็บว่าใครตั้ง/เมื่อไร — 23 พ.ย. 2569
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS excluded_by TEXT;
+ALTER TABLE dplan_plans ADD COLUMN IF NOT EXISTS excluded_at TIMESTAMPTZ;

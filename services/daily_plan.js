@@ -11,7 +11,7 @@
 //   DPLAN_get(kind, code, date)                  แผน 1 ใบ (ยังไม่มี = ใบเปล่า)
 //   DPLAN_previous(kind, code, date)             รายการของแผนล่าสุดก่อนวันนั้น (ปุ่ม "คัดลอกจากแผนก่อน")
 //   DPLAN_save(req)                              บันทึกร่าง / ส่งแผน / แก้ไขหลังส่ง
-//   DPLAN_setExcluded(id, excluded, reason)      ไม่นับใน KPI
+//   DPLAN_setExcluded(id, excluded, reason)      ไม่นับใน KPI (admin เท่านั้น — ปกติมาจากใบเซ็น)
 //   DPLAN_uploadSigned(req)                      ส่งใบที่ PE/PM ตรวจ+เซ็นแล้ว (PDF/รูป) + ผลตามที่ PE/PM ติ๊กในใบ
 //   DPLAN_removeSigned(id)                       ลบใบเซ็น (admin) → แผนกลับเป็น "รอใบเซ็น"
 //   DPLAN_delete(id)                             ลบ (ร่าง = ธุรการลบได้ · ส่งแล้ว = admin เท่านั้น)
@@ -224,6 +224,7 @@ const PLAN_COLS = `id, kind, project_code AS "projectCode", TO_CHAR(plan_date, '
   review_incomplete AS "reviewIncomplete", review_fields AS "reviewFields", review_note AS "reviewNote", reviewer,
   reviewer_position AS "reviewerPosition", TO_CHAR(reviewed_at AT TIME ZONE '${TZ}', 'YYYY-MM-DD') AS "reviewedDate",
   review_entered_by AS "reviewEnteredBy",
+  COALESCE(excluded_by, '') AS "excludedBy",
   (signed_file IS NOT NULL) AS "signed", signed_original AS "signedOriginal", signed_complete AS "signedComplete",
   TO_CHAR(signed_date, 'YYYY-MM-DD') AS "signedDate", signed_uploaded_by AS "signedBy",
   TO_CHAR(signed_uploaded_at AT TIME ZONE '${TZ}', 'DD/MM/') || (EXTRACT(YEAR FROM signed_uploaded_at AT TIME ZONE '${TZ}')::int + 543) || TO_CHAR(signed_uploaded_at AT TIME ZONE '${TZ}', ' HH24:MI') AS "signedText",
@@ -234,7 +235,7 @@ function withOnTime(plan, hol) {
   // systemComplete = ระบบตรวจช่องว่างตอนส่งครั้งแรก (ตัวช่วย ไม่อยู่ในสูตร)
   plan.systemComplete = plan.complete;
   plan.signed = !!plan.signed;
-  plan.complete = plan.status === 'submitted' && plan.signed ? !!plan.signedComplete : null;
+  plan.complete = plan.status === 'submitted' && plan.signed && !plan.excluded ? !!plan.signedComplete : null;
   const dl = deadlineOf(plan.kind, plan.planDate, plan.otDate, hol);
   plan.deadlineDate = dl.date;
   plan.onTime = plan.submittedAt ? new Date(plan.submittedAt) <= dl.at : null;
@@ -412,14 +413,18 @@ async function DPLAN_save(req) {
   });
 }
 
+// admin เท่านั้น (ปกติ "ไม่นับ" มาจากที่ PE/PM ติ๊กในใบเซ็น — เลือกตอนส่งใบเซ็น)
 async function DPLAN_setExcluded(id, excluded, reason) {
   requireStaff(this);
+  if (!isAdmin(this)) throw new UserError('"ไม่นับ" ยึดตามที่ PE/PM ติ๊กในใบ — เลือกตอนส่งใบเซ็น · แก้ทีหลังได้เฉพาะผู้ดูแลระบบ (admin)');
   const on = !!excluded;
   const why = str(reason, 200);
   if (on && !why) throw new UserError('กรุณาเลือกเหตุผลที่ไม่นับ');
+  const by = byName(this);
   const r = await sitePool.query(
-    `UPDATE dplan_plans SET excluded = $2, exclude_reason = $3, updated_by = $4, updated_at = NOW()
-      WHERE id = $1 AND status = 'submitted'`, [Number(id) || 0, on, on ? why : '', byName(this)]);
+    `UPDATE dplan_plans SET excluded = $2, exclude_reason = $3, excluded_by = CASE WHEN $2 THEN $5 ELSE NULL END,
+            excluded_at = CASE WHEN $2 THEN NOW() ELSE NULL END, updated_by = $4, updated_at = NOW()
+      WHERE id = $1 AND status = 'submitted'`, [Number(id) || 0, on, on ? why : '', by, by + ' (admin)']);
   if (!r.rowCount) throw new UserError('ตั้ง "ไม่นับ" ได้เฉพาะแผนที่ส่งแล้ว');
   return { ok: true };
 }
@@ -436,7 +441,12 @@ async function DPLAN_uploadSigned(req) {
     `SELECT kind, status, project_code, TO_CHAR(plan_date, 'YYYY-MM-DD') AS d, signed_file FROM dplan_plans WHERE id = $1`, [id])).rows[0];
   if (!p) throw new UserError('ไม่พบแผนนี้');
   if (p.status !== 'submitted') throw new UserError('ส่งใบเซ็นได้เฉพาะแผนที่กดส่งแล้ว');
-  if (typeof req.complete !== 'boolean') throw new UserError('เลือกผลตรวจตามที่ PE/PM ติ๊กในใบ (สมบูรณ์ / ไม่สมบูรณ์)');
+  // ผลตามที่ PE/PM ติ๊กในใบ: complete = true / false · หรือ excluded = true (ไม่นับ + เหตุผล)
+  const excl = req.excluded === true;
+  if (!excl && typeof req.complete !== 'boolean') throw new UserError('เลือกผลตรวจตามที่ PE/PM ติ๊กในใบ (สมบูรณ์ / ไม่สมบูรณ์ / ไม่นับ)');
+  const exWhy = excl ? str(req.excludeReason, 200) : '';
+  if (excl && !exWhy) throw new UserError('เลือกเหตุผลที่ไม่นับ ตามที่ PE/PM ติ๊กในใบ');
+  if (excl) req.complete = true;   // ไม่ใช้ในสูตร (ไม่นับ = ไม่อยู่ในตัวหาร) ตั้งไว้ไม่ให้ติดเงื่อนไขช่องที่ขาดด้านล่าง
   const allowed = p.kind === 'vehicle' ? ['plate', 'type', 'location', 'time'] : ['machine', 'mtime', 'job', 'requester'];
   const fields = req.complete ? [] : (Array.isArray(req.fields) ? req.fields : []).filter(f => allowed.includes(f));
   const note = req.complete ? '' : str(req.note, 500);
@@ -462,12 +472,15 @@ async function DPLAN_uploadSigned(req) {
   }
   const by = byName(this);
   await sitePool.query(
-    `UPDATE dplan_plans SET signed_complete = $2, review_incomplete = NOT $2, review_fields = $3::jsonb, review_note = $4,
+    `UPDATE dplan_plans SET signed_complete = $2, review_incomplete = COALESCE(NOT $2, FALSE), review_fields = $3::jsonb, review_note = $4,
             reviewer = $5, reviewer_position = $6, reviewed_at = NOW(), review_entered_by = $7, signed_date = $8,
             signed_file = COALESCE($9, signed_file), signed_original = CASE WHEN $9::text IS NULL THEN signed_original ELSE $10 END,
-            signed_uploaded_by = $7, signed_uploaded_at = NOW(), updated_by = $7, updated_at = NOW()
+            signed_uploaded_by = $7, signed_uploaded_at = NOW(), updated_by = $7, updated_at = NOW(),
+            excluded = $11, exclude_reason = $12,
+            excluded_by = CASE WHEN $11 THEN 'PE/PM ' || $5 || ' (ส่งโดย ' || $7 || ')' ELSE NULL END,
+            excluded_at = CASE WHEN $11 THEN NOW() ELSE NULL END
       WHERE id = $1`,
-    [id, req.complete, JSON.stringify(fields), note, reviewer, str(req.position, 60), by, signedDate, newFile, str(req.fileName, 200)]);
+    [id, excl ? null : req.complete, JSON.stringify(fields), note, reviewer, str(req.position, 60), by, signedDate, newFile, str(req.fileName, 200), excl, exWhy]);
   if (newFile && p.signed_file && p.signed_file !== newFile) fs.promises.unlink(path.join(SIGNED_DIR, p.signed_file)).catch(() => {});
   return { ok: true };
 }
@@ -481,7 +494,8 @@ async function DPLAN_removeSigned(id) {
   await sitePool.query(
     `UPDATE dplan_plans SET signed_file = NULL, signed_original = NULL, signed_complete = NULL, signed_date = NULL,
             signed_uploaded_by = NULL, signed_uploaded_at = NULL, review_incomplete = FALSE, review_fields = '[]'::jsonb,
-            review_note = '', reviewer = '', reviewer_position = '', reviewed_at = NULL, updated_by = $2, updated_at = NOW()
+            review_note = '', reviewer = '', reviewer_position = '', reviewed_at = NULL, updated_by = $2, updated_at = NOW(),
+            excluded = FALSE, exclude_reason = '', excluded_by = NULL, excluded_at = NULL
       WHERE id = $1`, [Number(id), byName(this)]);
   if (p.signed_file) fs.promises.unlink(path.join(SIGNED_DIR, p.signed_file)).catch(() => {});
   return { ok: true };

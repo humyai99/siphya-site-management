@@ -127,6 +127,7 @@
         <div class="status" id="statusBar"></div>
         <div class="miss hidden" id="missBox"></div>
         <div class="row hidden" id="exRow" style="margin-top:10px;">
+          <span class="note"><b>admin:</b></span>
           <label class="note"><input type="checkbox" id="exChk"> ไม่นับใน KPI</label>
           <select id="exReason"></select>
           <button class="btn2" id="btnEx">บันทึก</button>
@@ -307,9 +308,9 @@
       h.push('<span class="pill blue">ส่งแล้ว ' + esc(p.submittedText) + ' โดย ' + esc(p.submittedBy) + '</span>');
       h.push(p.onTime ? '<span class="pill ok">ทันกำหนด (ก่อน 16:00 น. ' + thDateShort(p.deadlineDate) + ')</span>'
         : '<span class="pill warn">ส่งหลังกำหนด 16:00 น. ' + thDateShort(p.deadlineDate) + '</span>');
-      h.push(!p.signed ? '<span class="pill warn">⏳ รอใบเซ็น PE/PM (ยังไม่นับใน KPI)</span>'
+      h.push(p.excluded ? '<span class="pill">ไม่นับ KPI — ' + esc(p.excludeReason) + (p.excludedBy ? ' · ' + esc(p.excludedBy) : '') + '</span>'
+        : !p.signed ? '<span class="pill warn">⏳ รอใบเซ็น PE/PM (ยังไม่นับใน KPI)</span>'
         : p.complete ? '<span class="pill ok">✓ แผนสมบูรณ์ (ตาม PE/PM)</span>' : '<span class="pill bad">✗ แผนไม่สมบูรณ์ (ตาม PE/PM)</span>');
-      if (p.excluded) h.push('<span class="pill">ไม่นับ KPI — ' + esc(p.excludeReason) + '</span>');
       if (p.editCount) h.push('<span class="pill">แก้ไขหลังส่ง ' + p.editCount + ' ครั้ง (ล่าสุด ' + esc(p.updatedText) + ' ' + esc(p.updatedBy) + ')</span>');
     } else if (p.status === 'draft') {
       h.push('<span class="pill warn">ร่าง — ยังไม่ได้ส่ง</span><span class="note">กำหนดส่ง 16:00 น. ' + thDateShort(p.deadlineDate) + '</span>');
@@ -323,7 +324,7 @@
     $('missBox').innerHTML = miss.length ? '<b>ระบบพบช่องที่ยังว่าง ณ ตอนส่ง</b> <span class="note">(ตัวช่วยเท่านั้น — ผลใน KPI ยึดตามที่ PE/PM ติ๊กในใบ)</span><br>' + miss.map(function (m) {
       return 'แถว ' + m.idx + (m.label ? ' (' + esc(m.label) + ')' : '') + ': ' + m.fields.map(function (f) { return META.fieldNames[f]; }).join(', ');
     }).join('<br>') : '';
-    $('exRow').classList.toggle('hidden', p.status !== 'submitted');
+    $('exRow').classList.toggle('hidden', p.status !== 'submitted' || !META.isAdmin);   // ปกติ "ไม่นับ" มาจากใบเซ็น · admin แก้ได้ที่นี่
     $('exChk').checked = !!p.excluded;
     if (p.excludeReason) {
       if (META.excludeReasons.indexOf(p.excludeReason) < 0) $('exReason').insertAdjacentHTML('beforeend', '<option>' + esc(p.excludeReason) + '</option>');
@@ -349,7 +350,8 @@
     var head = '<b style="font-size:13.5px;">📎 ใบที่ PE/PM ตรวจ + ลงนามแล้ว</b> <span class="note">— พิมพ์ฟอร์ม → ให้ PE/PM ติ๊กช่องตรวจสอบและเซ็น → สแกน/ถ่ายรูปส่งกลับที่นี่ (KPI นับเมื่อส่งใบเซ็นแล้ว)</span>';
     if (p.signed && !revEditing) {
       box.innerHTML = head + '<div class="sgn">' +
-        (p.complete ? '<span class="ok">✓ แผนสมบูรณ์</span>' : '<span class="bad">✗ แผนไม่สมบูรณ์</span>') +
+        (p.excluded ? '<span class="bad" style="color:var(--faint)">ไม่นับใน KPI — ' + esc(p.excludeReason) + '</span>'
+          : p.complete ? '<span class="ok">✓ แผนสมบูรณ์</span>' : '<span class="bad">✗ แผนไม่สมบูรณ์</span>') +
         ' — ตาม <b>' + esc(p.reviewer) + '</b>' + (p.reviewerPosition ? ' (' + esc(p.reviewerPosition) + ')' : '') + ' ลงนามวันที่ ' + esc(thDateShort(p.signedDate)) +
         (!p.complete && (p.reviewFields || []).length ? '<br>ข้อมูลที่ขาด / ไม่ชัด: ' + p.reviewFields.map(function (f) { return META.fieldNames[f]; }).join(', ') : '') +
         (!p.complete && p.reviewNote ? '<br>รายละเอียด: ' + esc(p.reviewNote) : '') +
@@ -360,14 +362,17 @@
       return;
     }
     var sel = p.reviewFields || [], had = p.signed;
-    var res = had ? (p.complete ? 'ok' : 'bad') : '';
+    var res = had ? (p.excluded ? 'ex' : p.complete ? 'ok' : 'bad') : '';
     box.innerHTML = head +
       '<div class="sgn">' +
       '<div><b>ไฟล์ใบที่เซ็นแล้ว</b> (PDF หรือรูป) ' + (had ? '<span class="note">— ไม่เลือกไฟล์ = ใช้ไฟล์เดิม</span>' : '') +
         '<br><input type="file" id="sgFile" accept="application/pdf,image/jpeg,image/png"></div>' +
       '<div style="margin-top:6px;"><b>ผลตรวจตามที่ PE/PM ติ๊กในใบ</b><br>' +
         '<label class="opt"><input type="radio" name="sgRes" value="ok"' + (res === 'ok' ? ' checked' : '') + '> ✓ แผนสมบูรณ์</label>' +
-        '<label class="opt"><input type="radio" name="sgRes" value="bad"' + (res === 'bad' ? ' checked' : '') + '> ✗ แผนไม่สมบูรณ์</label></div>' +
+        '<label class="opt"><input type="radio" name="sgRes" value="bad"' + (res === 'bad' ? ' checked' : '') + '> ✗ แผนไม่สมบูรณ์</label>' +
+        '<label class="opt"><input type="radio" name="sgRes" value="ex"' + (res === 'ex' ? ' checked' : '') + '> ไม่นับ</label></div>' +
+      '<div id="sgExBox" class="' + (res === 'ex' ? '' : 'hidden') + '" style="margin-top:4px;">เหตุผลที่ไม่นับ (ตามที่ติ๊กในใบ) : <select id="sgExReason">' +
+        META.excludeReasons.map(function (r) { return '<option' + (p.excludeReason === r ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select></div>' +
       '<div id="sgBadBox" class="' + (res === 'bad' ? '' : 'hidden') + '" style="margin-top:4px;">ข้อมูลที่ขาด / ไม่ชัด : ' +
         reviewFieldList().map(function (f) { return '<label class="opt"><input type="checkbox" class="revF" value="' + f[0] + '"' + (sel.indexOf(f[0]) >= 0 ? ' checked' : '') + '> ' + f[1] + '</label>'; }).join('') +
         '<label class="f" style="margin-top:4px;">รายละเอียด (ตามที่เขียนในใบ)<input type="text" id="revNote" value="' + esc(p.reviewNote || '') + '" placeholder="เช่น TC.1 ช่วง 08–10 น. งานที่ทำเขียนไม่ชัด"></label></div>' +
@@ -400,7 +405,7 @@
     });
   }
   $('revBox').addEventListener('change', function (e) {
-    if (e.target.name === 'sgRes') $('sgBadBox').classList.toggle('hidden', e.target.value !== 'bad');
+    if (e.target.name === 'sgRes') { $('sgBadBox').classList.toggle('hidden', e.target.value !== 'bad'); $('sgExBox').classList.toggle('hidden', e.target.value !== 'ex'); }
   });
   $('revBox').addEventListener('click', function (e) {
     var id = e.target.id;
@@ -414,7 +419,7 @@
       var file = $('sgFile').files[0];
       if (!file && !S.plan.signed) { $('sgMsg').textContent = 'เลือกไฟล์ใบที่ PE/PM เซ็นแล้วก่อน'; return; }
       if (!r) { $('sgMsg').textContent = 'เลือกผลตรวจตามที่ PE/PM ติ๊กในใบ'; return; }
-      var req = { id: S.plan.id, complete: r.value === 'ok', reviewer: $('revName').value, position: $('revPos').value, signedDate: $('sgDate').value,
+      var req = { id: S.plan.id, complete: r.value === 'ok', excluded: r.value === 'ex', excludeReason: r.value === 'ex' ? $('sgExReason').value : '', reviewer: $('revName').value, position: $('revPos').value, signedDate: $('sgDate').value,
         fields: Array.prototype.map.call(document.querySelectorAll('.revF:checked'), function (x) { return x.value; }), note: $('revNote').value };
       var btn = e.target; btn.disabled = true; $('sgMsg').textContent = 'กำลังส่ง...';
       (file ? readSigned(file) : Promise.resolve(null)).then(function (dataUrl) {
@@ -422,7 +427,7 @@
         return call('DPLAN_uploadSigned', req);
       }).then(function () {
         revEditing = false; loadPlan();
-        setTimeout(function () { msg('saveMsg', '✓ ส่งใบเซ็นแล้ว — แผนนี้นับใน KPI เป็น "' + (req.complete ? 'สมบูรณ์' : 'ไม่สมบูรณ์') + '"', 'ok'); }, 400);
+        setTimeout(function () { msg('saveMsg', req.excluded ? '✓ ส่งใบเซ็นแล้ว — แผนนี้ไม่นับใน KPI (' + req.excludeReason + ')' : '✓ ส่งใบเซ็นแล้ว — แผนนี้นับใน KPI เป็น "' + (req.complete ? 'สมบูรณ์' : 'ไม่สมบูรณ์') + '"', 'ok'); }, 400);
       }).catch(function (er) { btn.disabled = false; $('sgMsg').textContent = er.message; });
     }
   });
@@ -762,8 +767,10 @@
       '<div>รายละเอียด (' + (v ? 'คัน' : 'รายการ') + 'ที่ข้อมูลไม่ครบ) ......................................................................................................................</div>' +
       '<div style="margin-top:6px">ผู้ตรวจ ........................................................ &nbsp; ตำแหน่ง .................................... &nbsp; วันที่ตรวจ ......... / ......... / .........</div></div>';
     return '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><title>' + esc(f.formNo + ' ' + S.projectName + ' ' + p.planDate) + '</title>' +
-      '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"><style>' +
-      '@page{size:A4 landscape;margin:8mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:Sarabun,sans-serif;font-size:10.5px;color:#000;margin:0}' +
+      // ฟอนต์ไทยจากระบบเอง (fonts/tahoma.ttf — ตัวเดียวกับ PDF ของ NPO) ใบพิมพ์ออกเหมือนกันทุกเครื่อง ไม่ต้องต่อเน็ตภายนอก
+      '<style>@font-face{font-family:"PlanThai";src:url(' + location.origin + '/fonts/tahoma.ttf);font-weight:normal}' +
+      '@font-face{font-family:"PlanThai";src:url(' + location.origin + '/fonts/tahomabd.ttf);font-weight:bold}' +
+      '@page{size:A4 landscape;margin:8mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:PlanThai,Tahoma,sans-serif;font-size:10.5px;color:#000;margin:0}' +
       '.hd{display:flex;justify-content:space-between;align-items:flex-start}.hd h1{font-size:16px;margin:0 0 4px;text-align:center;flex:1}' +
       '.no{border:1px solid #000;font-size:10px;padding:3px 6px;line-height:1.5}.meta{display:flex;justify-content:space-between;margin:4px 0 6px;font-size:11.5px}' +
       'table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:2px 3px;vertical-align:middle;word-wrap:break-word}' +
