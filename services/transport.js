@@ -341,6 +341,32 @@ async function TRANSPORT_saveProject(p) {
   return true;
 }
 
+// MasterData รหัส 7 ตัว (admin) — แก้/เพิ่ม ประเภทวัสดุ · รายการ · หน่วย
+// m = { code, group, description, unit, applyExisting } → applyExisting: แก้รายการที่บันทึกไปแล้วของรหัสนี้ตามด้วย
+async function TRANSPORT_saveMaster(m) {
+  requireAdmin(this);
+  m = m || {};
+  const code = str(m.code, 20).toUpperCase().replace(/\s+/g, '');
+  if (!/^[A-Z0-9]{7}$/.test(code)) throw new UserError('รหัส MasterData ต้องเป็น 7 ตัว (A-Z, 0-9) เช่น PC18050');
+  const group = str(m.group, 200), description = str(m.description, 300), unit = str(m.unit, 30);
+  if (!description) throw new UserError('กรุณากรอกรายการวัสดุ');
+  if (!unit) throw new UserError('กรุณากรอกหน่วย');
+  return withTx(async client => {
+    await client.query(
+      `INSERT INTO material_master (mat_code, group_name, description, unit) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (mat_code) DO UPDATE SET group_name = EXCLUDED.group_name, description = EXCLUDED.description, unit = EXCLUDED.unit`,
+      [code, group, description, unit]);
+    let updated = 0;
+    if (m.applyExisting) {
+      updated = (await client.query(
+        `UPDATE material_transport_logs SET mat_type = $2, mat_item = $3, unit = $4
+          WHERE UPPER(LEFT(mat_code, 7)) = $1 AND (mat_type IS DISTINCT FROM $2 OR mat_item IS DISTINCT FROM $3 OR unit IS DISTINCT FROM $4)`,
+        [code, group, description, unit])).rowCount;
+    }
+    return { code, group, description, unit, updated };
+  });
+}
+
 // buildings = [{ name: 'อาคารC', floors: ['B4','B3',...] }, ...]  (แทนที่ทั้งหมดของโครงการนี้)
 async function TRANSPORT_saveBuildings(projectCode, buildings) {
   requireAdmin(this);
@@ -368,7 +394,7 @@ module.exports = {
   STATUS1, STATUS2, cellText, statusOf, status2Of,
   functions: {
     TRANSPORT_getProjects, TRANSPORT_getReportMeta, TRANSPORT_getLogData,
-    TRANSPORT_entryData, TRANSPORT_getMaster, TRANSPORT_saveRows, TRANSPORT_deleteRows,
+    TRANSPORT_entryData, TRANSPORT_getMaster, TRANSPORT_saveMaster, TRANSPORT_saveRows, TRANSPORT_deleteRows,
     TRANSPORT_listDeleted, TRANSPORT_restoreRows,
     TRANSPORT_listProjects, TRANSPORT_saveProject, TRANSPORT_saveBuildings
   }

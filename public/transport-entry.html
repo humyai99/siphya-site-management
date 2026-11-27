@@ -126,6 +126,16 @@
     <div class="hint" style="margin:0 0 8px">ใช้คำนวณ KPI ส่งภายใน 2 วันทำการ (นับจันทร์–เสาร์ ข้ามวันอาทิตย์อยู่แล้ว) · บรรทัดละวัน: <b>วว/ดด/ปปปป ชื่อวันหยุด</b> เช่น 31/12/2026 วันสิ้นปี</div>
     <textarea id="hList" rows="6" style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="05/12/2026 วันพ่อแห่งชาติ&#10;31/12/2026 วันสิ้นปี"></textarea>
     <div class="row-actions"><button class="btn main" id="hSave">บันทึกวันหยุด</button></div>
+    <h3>รายการวัสดุ (MasterData) — ใช้กับทุกโครงการ</h3>
+    <div class="hint" style="margin:0 0 8px">ระบบหาประเภท/รายการ/หน่วยจาก <b>รหัส 7 ตัวแรก</b> ของ Mat. Code · พิมพ์รหัสที่มีอยู่เพื่อแก้ หรือรหัสใหม่เพื่อเพิ่ม</div>
+    <div class="grid2">
+      <div><label>รหัส 7 ตัว</label><input id="mCode" list="dlMat" placeholder="PC18050" maxlength="20"></div>
+      <div><label>หน่วย</label><input id="mUnit" placeholder="ถุง"></div>
+      <div><label>ประเภทวัสดุ</label><input id="mGroup"></div>
+      <div><label>รายการวัสดุ</label><input id="mDesc"></div>
+    </div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:400"><input type="checkbox" id="mApply" style="width:auto"> แก้รายการที่บันทึกไปแล้วของรหัสนี้ตามด้วย (ทุกโครงการ)</label>
+    <div class="row-actions"><button class="btn main" id="mSave">บันทึกรายการวัสดุ</button></div>
     <div class="msg" id="setMsg" style="margin:10px 0 0"></div>
     <div class="row-actions"><button class="btn" id="setClose">ปิด</button></div>
   </div>
@@ -532,6 +542,23 @@
     if (!S.code) { setMsg('เปิดใช้โครงการก่อน แล้วค่อยตั้งอาคาร/ชั้น'); return; }
     run().withSuccessHandler(function () { setMsg('บันทึกอาคาร/ชั้นแล้ว', true); load(S.code); })
       .withFailureHandler(function (e) { setMsg(e.message); }).TRANSPORT_saveBuildings(S.code, list);
+  };
+
+  // MasterData (admin)
+  $('mCode').oninput = function () {
+    var m = S.master[$('mCode').value.trim().toUpperCase().slice(0, 7)];
+    if (m) { $('mGroup').value = m[1]; $('mDesc').value = m[2]; $('mUnit').value = m[3]; }
+  };
+  $('mSave').onclick = function () {
+    var p = { code: $('mCode').value.trim().toUpperCase().slice(0, 7), group: $('mGroup').value.trim(), description: $('mDesc').value.trim(), unit: $('mUnit').value.trim(), applyExisting: $('mApply').checked };
+    if (p.applyExisting && !confirm('แก้รายการที่บันทึกไปแล้วทุกแถวที่ขึ้นต้นด้วย ' + p.code + ' เป็น "' + p.description + ' / ' + p.unit + '" ใช่ไหม?')) return;
+    run().withSuccessHandler(function (r) {
+      S.master[r.code] = [r.code, r.group, r.description, r.unit];
+      if (!document.querySelector('#dlMat option[value="' + r.code + '"]')) $('dlMat').insertAdjacentHTML('beforeend', '<option value="' + esc(r.code) + '">' + esc(r.group + ' · ' + r.description) + '</option>');
+      setMsg('บันทึก ' + r.code + ' แล้ว' + (p.applyExisting ? ' · แก้รายการเดิม ' + r.updated + ' แถว' : ''), true);
+      $('mApply').checked = false;
+      if (S.code && p.applyExisting && !dirtyCount()) load(S.code);
+    }).withFailureHandler(function (e) { setMsg(e.message); }).TRANSPORT_saveMaster(p);
   };
 
   // master list สำหรับเติมอัตโนมัติ + รายการให้เลือก
