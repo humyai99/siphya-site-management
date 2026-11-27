@@ -55,6 +55,34 @@ router.get('/me', authenticateToken, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
 
+// POST /api/auth/change-password - ผู้ใช้เปลี่ยนรหัสผ่านของตัวเอง (ต้องใส่รหัสเดิม)
+// รหัสเดิมผิด → 400 (ไม่ใช้ 401 เพราะหน้าเว็บจะเด้งออกจากระบบ)
+router.post('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const currentPassword = String((req.body && req.body.currentPassword) || '');
+    const newPassword = String((req.body && req.body.newPassword) || '');
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ ok: false, error: 'กรุณากรอกรหัสเดิมและรหัสใหม่' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ ok: false, error: 'รหัสใหม่ต้องยาวอย่างน้อย 6 ตัว' });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ ok: false, error: 'รหัสใหม่ต้องไม่ซ้ำกับรหัสเดิม' });
+    }
+    const u = await querySite('SELECT id, password_hash FROM users WHERE id = $1', [req.user.id]);
+    if (!u.rows.length) return res.status(400).json({ ok: false, error: 'ไม่พบบัญชีนี้ กรุณาเข้าสู่ระบบใหม่' });
+    const ok = await bcrypt.compare(currentPassword, u.rows[0].password_hash);
+    if (!ok) return res.status(400).json({ ok: false, error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await querySite('UPDATE users SET password_hash = $2 WHERE id = $1', [req.user.id, hash]);
+    res.json({ ok: true, message: 'เปลี่ยนรหัสผ่านแล้ว' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ ok: false, error: 'เปลี่ยนรหัสผ่านไม่สำเร็จ' });
+  }
+});
+
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
   res.clearCookie('token');

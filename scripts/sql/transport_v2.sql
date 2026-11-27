@@ -1,0 +1,94 @@
+-- ============================================================
+-- ระบบติดตามขนส่งวัสดุภายในไซต์ (หลายโครงการ) — โครงตาราง
+-- รันซ้ำได้ ไม่ลบข้อมูลเดิม   วิธีรัน:  node scripts/migrate_transport.js
+-- ============================================================
+
+-- รายการเบิก/รับ (ตารางเดิมของระบบ เพิ่มคอลัมน์โครงการ)
+CREATE TABLE IF NOT EXISTS material_transport_logs (
+  id                 SERIAL PRIMARY KEY,
+  log_order          INT,
+  request_date       DATE,
+  receive_date       DATE,
+  status             TEXT,
+  mat_code           TEXT,
+  mat_type           TEXT,
+  mat_item           TEXT,
+  building           TEXT,
+  floor              TEXT,
+  quantity           NUMERIC,
+  unit               TEXT,
+  warehouse          TEXT,
+  status2            TEXT,
+  requester_receiver TEXT,
+  note               TEXT,
+  created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE material_transport_logs ADD COLUMN IF NOT EXISTS project_code TEXT;
+ALTER TABLE material_transport_logs ADD COLUMN IF NOT EXISTS source       TEXT;         -- 'sheet' = นำเข้าจาก Google Sheet, 'web' = กรอกบนเว็บ
+ALTER TABLE material_transport_logs ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ;
+ALTER TABLE material_transport_logs ADD COLUMN IF NOT EXISTS updated_by   TEXT;
+CREATE INDEX IF NOT EXISTS material_transport_logs_project_idx
+  ON material_transport_logs (project_code, request_date, id);
+
+-- โครงการ (แทนแท็บ Projects)
+CREATE TABLE IF NOT EXISTS transport_projects (
+  code       VARCHAR(10) PRIMARY KEY,
+  name       TEXT NOT NULL,
+  logo_text  TEXT DEFAULT '',
+  active     BOOLEAN NOT NULL DEFAULT TRUE,
+  note       TEXT DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0
+);
+
+-- อาคาร/ชั้น ของแต่ละโครงการ (แทนแท็บ Build_<รหัส>) 1 แถว = 1 ชั้น
+CREATE TABLE IF NOT EXISTS transport_floors (
+  project_code VARCHAR(10) NOT NULL REFERENCES transport_projects(code) ON DELETE CASCADE,
+  building     TEXT NOT NULL,
+  floor        TEXT NOT NULL,
+  b_order      INT NOT NULL DEFAULT 0,
+  f_order      INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (project_code, building, floor)
+);
+
+-- รายการวัสดุ (แทนแท็บ MasterData) ค้นจาก Mat. Code 7 ตัวแรก
+CREATE TABLE IF NOT EXISTS material_master (
+  mat_code    VARCHAR(20) PRIMARY KEY,   -- เช่น PC15070
+  type_code   TEXT, type_name TEXT,
+  group_code  TEXT, group_name TEXT,     -- group_name = ประเภทวัสดุ
+  sub_group   TEXT,
+  description TEXT,                      -- รายการวัสดุ
+  unit        TEXT
+);
+
+-- ใบเบิกวัสดุ (PDF) — หลายแถวอ้างใบเดียวกันได้ผ่านเลขที่ใบเบิก
+ALTER TABLE material_transport_logs ADD COLUMN IF NOT EXISTS doc_no TEXT;
+CREATE INDEX IF NOT EXISTS material_transport_logs_doc_idx ON material_transport_logs (project_code, doc_no);
+CREATE TABLE IF NOT EXISTS transport_docs (
+  project_code  VARCHAR(10) NOT NULL,
+  doc_no        TEXT NOT NULL,
+  file_name     TEXT NOT NULL,             -- ชื่อไฟล์ที่เก็บในโฟลเดอร์ storage/transport-docs/<โครงการ>/
+  original_name TEXT,
+  doc_date      DATE,                      -- วันที่ในใบเบิก (อ่านจาก PDF ถ้าได้)
+  uploaded_by   TEXT,
+  uploaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (project_code, doc_no)
+);
+
+-- วันหยุด (ใช้คำนวณ KPI ส่งภายใน 2 วันทำการ: จันทร์–เสาร์ ข้ามวันอาทิตย์และวันในตารางนี้)
+CREATE TABLE IF NOT EXISTS transport_holidays (
+  holiday_date DATE PRIMARY KEY,
+  name         TEXT DEFAULT ''
+);
+
+-- ถังขยะของแถวที่ลบ (23 พ.ย. 2569) — ลบแล้วกู้คืนได้ เก็บว่าใครลบ / เมื่อไร
+-- แยกตาราง (ไม่ใช่ flag ในตารางหลัก) เพื่อให้รายงาน / KPI / นับใบเบิก ทุกที่ไม่ต้องกรองแถวที่ลบ
+-- row = ข้อมูลทั้งแถวตอนลบ (to_jsonb) · กู้คืน = ใส่กลับด้วย id เดิม
+CREATE TABLE IF NOT EXISTS transport_deleted_rows (
+  id           SERIAL PRIMARY KEY,
+  log_id       INTEGER NOT NULL,
+  project_code TEXT NOT NULL,
+  row          JSONB NOT NULL,
+  deleted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_by   TEXT
+);
+CREATE INDEX IF NOT EXISTS transport_deleted_rows_project_idx ON transport_deleted_rows (project_code, deleted_at DESC);
