@@ -110,6 +110,7 @@
   <div class="modal">
     <h2>⚙ ตั้งค่าโครงการ (ผู้ดูแลระบบ)</h2>
     <h3>โครงการ</h3>
+    <div style="margin-bottom:8px"><label>เลือกโครงการที่มีอยู่ (รวมโครงการที่ปิดไว้)</label><select id="pPick" style="width:100%"></select></div>
     <div class="grid2">
       <div><label>รหัส</label><input id="pCode" placeholder="0DJ"></div>
       <div><label>ชื่อโครงการ</label><input id="pName"></div>
@@ -461,7 +462,15 @@
     run().withSuccessHandler(function (list) {
       var want = keep || new URLSearchParams(location.search).get('project') || '';
       $('project').innerHTML = list.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code + ' — ' + p.name) + '</option>'; }).join('');
-      if (!list.length) { msg('ยังไม่มีโครงการที่เปิดใช้'); return; }
+      if (!list.length) {
+        msg('ยังไม่มีโครงการที่เปิดใช้');
+        // admin: เปิดปุ่มตั้งค่าไว้ เพื่อเปิดใช้โครงการได้จากหน้าเว็บ
+        run().withSuccessHandler(function () {
+          $('btnSettings').style.display = '';
+          msg('ยังไม่มีโครงการที่เปิดใช้ — กด ⚙ ตั้งค่าโครงการ แล้วเลือกโครงการเพื่อเปิดใช้');
+        }).withFailureHandler(function () {}).TRANSPORT_listProjects();
+        return;
+      }
       var code = list.some(function (p) { return p.code === want; }) ? want : list[0].code;
       $('project').value = code; load(code);
     }).withFailureHandler(function (e) { msg(e.message); }).TRANSPORT_getProjects();
@@ -490,9 +499,14 @@
     setMsg('');
     run().withSuccessHandler(function (list) {
       var p = list.filter(function (x) { return x.code === S.code; })[0] || {};
+      $('pPick').innerHTML = '<option value="">— เลือก —</option>' + list.map(function (x) {
+        return '<option value="' + esc(x.code) + '">' + esc(x.code + ' — ' + x.name + (x.active ? '' : ' (ปิดอยู่)')) + '</option>';
+      }).join('');
+      $('pPick').value = p.code || '';
+      $('pPick').onchange = function () { fillProjectForm(list.filter(function (x) { return x.code === $('pPick').value; })[0] || {}); };
       fillProjectForm(p);
       $('bProj').textContent = S.code;
-      $('bList').innerHTML = ''; (S.data.buildings || []).forEach(function (b) { $('bList').appendChild(bRow(b)); });
+      $('bList').innerHTML = ''; ((S.data && S.data.buildings) || []).forEach(function (b) { $('bList').appendChild(bRow(b)); });
       $('setBg').style.display = 'flex';
       run().withSuccessHandler(function (hs) {
         $('hList').value = hs.map(function (h) { return h.date + (h.name ? ' ' + h.name : ''); }).join('\n');
@@ -507,7 +521,7 @@
   $('pNew').onclick = function () { fillProjectForm({}); $('pCode').focus(); };
   $('pSave').onclick = function () {
     var p = { code: $('pCode').value.trim().toUpperCase(), name: $('pName').value.trim(), logo: $('pLogo').value.trim(), active: $('pActive').value === '1' };
-    run().withSuccessHandler(function () { setMsg('บันทึกโครงการ ' + p.code + ' แล้ว', true); loadProjects(S.code); })
+    run().withSuccessHandler(function () { setMsg('บันทึกโครงการ ' + p.code + ' แล้ว', true); loadProjects(S.code || p.code); })
       .withFailureHandler(function (e) { setMsg(e.message); }).TRANSPORT_saveProject(p);
   };
   $('bAdd').onclick = function () { $('bList').appendChild(bRow({ name: '', floors: [] })); };
@@ -515,6 +529,7 @@
     var list = Array.prototype.map.call($('bList').querySelectorAll('.bld'), function (d) {
       return { name: d.querySelector('.bn').value.trim(), floors: d.querySelector('.bf').value.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean) };
     }).filter(function (b) { return b.name; });
+    if (!S.code) { setMsg('เปิดใช้โครงการก่อน แล้วค่อยตั้งอาคาร/ชั้น'); return; }
     run().withSuccessHandler(function () { setMsg('บันทึกอาคาร/ชั้นแล้ว', true); load(S.code); })
       .withFailureHandler(function (e) { setMsg(e.message); }).TRANSPORT_saveBuildings(S.code, list);
   };

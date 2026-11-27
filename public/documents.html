@@ -126,7 +126,9 @@
     $('sum').textContent = 'พบ ' + rows.length + ' รายการ' + (rows.length >= 500 ? ' (แสดง 500 รายการล่าสุด)' : '');
     if(!rows.length){ $('list').innerHTML = '<div class="empty">ยังไม่มีประวัติการลงนามตามเงื่อนไข</div>'; return; }
     $('list').innerHTML = rows.map(function(r){
-      var what = r.action === 'cleared'
+      var what = r.action === 'deleted'
+        ? '<span class="pill red">รายการถูกลบ</span>' + (r.name ? ' โดย <b>' + esc(r.name) + '</b>' : '') + (r.method ? ' — เหตุผล: ' + esc(r.method) : '')
+        : r.action === 'cleared'
         ? '<span class="pill red">ลายเซ็นถูกล้าง</span> เพราะแก้ไขรายการ' + (r.name ? ' โดย <b>' + esc(r.name) + '</b>' : '')
         : '<span class="pill ok">ลงนาม</span> <b>' + esc(r.name) + '</b>' + (r.username ? ' (' + esc(r.username) + ')' : '') + ' · ' + esc(SLOT[r.slot] || '');
       var tags = '';

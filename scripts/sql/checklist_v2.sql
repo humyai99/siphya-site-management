@@ -139,3 +139,19 @@ CREATE TABLE IF NOT EXISTS checklist_pin_failures (
   locked_until TIMESTAMPTZ,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- รายการเช็คลิสต์ที่ admin ลบ (ต้องใส่เหตุผล) — เก็บสำเนาข้อมูลไว้ตรวจย้อนหลัง
+CREATE TABLE IF NOT EXISTS checklist_deleted (
+  id              SERIAL PRIMARY KEY,
+  checklist_id    INT NOT NULL,
+  site_name       TEXT,
+  inspection_date DATE,
+  building        TEXT,
+  floor           TEXT,
+  recorded_by     TEXT,
+  data            JSONB NOT NULL,
+  reason          TEXT NOT NULL,
+  deleted_by      TEXT,
+  deleted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS checklist_deleted_time_idx ON checklist_deleted (deleted_at DESC);

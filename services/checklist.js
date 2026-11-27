@@ -9,6 +9,7 @@
 //   CHECKLIST_checkEditPin(req)         ตรวจรหัสก่อนแก้ไข
 //   CHECKLIST_updateSubmission(req)     บันทึกการแก้ไข (ล้างลายเซ็นช่อง 2-3)
 //   CHECKLIST_getPrintPdf(req)          สร้าง PDF จาก HTML ใบพิมพ์
+//   CHECKLIST_deleteSubmission(req)     ลบรายการ (admin · ต้องใส่เหตุผล)
 //
 // ข้อผิดพลาดที่ผู้ใช้ควรเห็น โยนเป็น UserError (ข้อความภาษาไทย)
 // ============================================================
@@ -489,6 +490,45 @@ async function CHECKLIST_updateSubmission(req) {
   return { ok: true };
 }
 
+// ลบรายการ (admin เท่านั้น · ต้องใส่เหตุผล) — เก็บสำเนาไว้ใน checklist_deleted + บันทึกในประวัติการลงนาม
+// PDF ที่ลงนามครบแล้วในคลังไม่ลบ แต่ติดป้าย "ถูกแทนที่ — รายการถูกลบ"
+async function CHECKLIST_deleteSubmission(req) {
+  if (!(this && this.user && this.user.role === 'admin')) throw new UserError('ลบรายการได้เฉพาะผู้ดูแลระบบ (admin)');
+  req = req || {};
+  const reason = str(req.reason, 300);
+  if (reason.length < 3) throw new UserError('กรุณาใส่เหตุผลที่ลบ');
+  const by = userName(this);
+  let photoUrls = [], pdfPath = '';
+
+  await withTx(async client => {
+    const row = await lockRow(client, req.rowId, req.submittedAt);
+    const items = (await client.query(
+      'SELECT item_id, status, worker, location, remark FROM checklist_items WHERE checklist_id = $1 ORDER BY item_id', [row.id])).rows;
+    photoUrls = (await client.query('SELECT url FROM checklist_photos WHERE checklist_id = $1', [row.id])).rows.map(r => r.url);
+    const data = { head: row, items, photos: photoUrls };
+    await client.query(
+      `INSERT INTO checklist_deleted (checklist_id, site_name, inspection_date, building, floor, recorded_by, data, reason, deleted_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [row.id, row.site_name, row.inspection_date, row.building || '', row.floor || '', row.recorded_by || '',
+        JSON.stringify(data), reason, by]);
+    await logSign(client, row, { action: 'deleted', name: by, username: by, method: reason, sessionUser: by });
+    await client.query(
+      `UPDATE checklist_pdf_archive SET superseded_at = NOW(), superseded_reason = $2
+        WHERE checklist_id = $1 AND superseded_at IS NULL`, [row.id, 'รายการถูกลบ: ' + reason]);
+    const inArchive = row.pdf_path
+      ? (await client.query('SELECT 1 FROM checklist_pdf_archive WHERE file_path = $1', [row.pdf_path])).rows.length : 1;
+    if (!inArchive) pdfPath = row.pdf_path;
+    await client.query('DELETE FROM site_supervisor_checklists WHERE id = $1', [row.id]); // items/photos ลบตาม (CASCADE)
+  });
+
+  photoUrls.forEach(removePhotoFile);
+  if (pdfPath && String(pdfPath).startsWith('/uploads/checklist-pdf/')) {
+    const f = path.join(PUBLIC_DIR, pdfPath);
+    if (f.startsWith(PDF_DIR)) fs.promises.unlink(f).catch(() => {});
+  }
+  return { ok: true };
+}
+
 function userName(ctx) { return (ctx && ctx.user && (ctx.user.username || ctx.user.full_name)) || ''; }
 
 // ตั้งค่าบัญชีและสิทธิ์ลงนาม อยู่ที่หน้า /users (services/users_admin.js)
@@ -644,6 +684,7 @@ module.exports = {
     CHECKLIST_getPrintPdf,
     CHECKLIST_signMany,
     CHECKLIST_myRights,
-    CHECKLIST_buildings
+    CHECKLIST_buildings,
+    CHECKLIST_deleteSubmission
   }
 };

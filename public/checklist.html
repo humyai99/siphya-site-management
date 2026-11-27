@@ -1506,6 +1506,7 @@
           html += '      <button type="button" class="dash-sign-btn" data-sign-submission="' + escAttr(s.id) + '">ลงนาม</button>';
         }
         if(canEditRow(s)) html += '      <button type="button" class="dash-view-btn" data-edit-submission="' + escAttr(s.id) + '">แก้ไข</button>';
+        if(RIGHTS.pinFallback) html += '      <button type="button" class="dash-view-btn" style="color:#b42318;border-color:#f3c2bd" data-delete-submission="' + escAttr(s.id) + '">ลบ</button>';
         html += '      <button type="button" class="dash-view-btn" data-view-submission="' + escAttr(s.id) + '">' + escHtml(t('viewPrintBtn')) + '</button>';
         html += '    </div>';
         html += '  </div>';
@@ -1531,6 +1532,8 @@
     if(signBtn){ openSignModal(signBtn.getAttribute('data-sign-submission')); return; }
     var editBtn = e.target.closest('[data-edit-submission]');
     if(editBtn){ openEditModal(editBtn.getAttribute('data-edit-submission')); return; }
+    var delBtn = e.target.closest('[data-delete-submission]');
+    if(delBtn){ deleteSubmission(delBtn.getAttribute('data-delete-submission')); return; }
     var btn = e.target.closest('[data-view-submission]');
     if(!btn) return;
     var id = btn.getAttribute('data-view-submission');
@@ -1538,6 +1541,22 @@
     if(!sub) return;
        openPreview(sub);
   });
+
+  // ลบรายการ (admin) — ต้องใส่เหตุผล · ระบบเก็บสำเนาและประวัติไว้
+  function deleteSubmission(id){
+    var sub = (state.submissions || []).find(function(x){ return x.id === id; });
+    if(!sub) return;
+    var label = sub.site + ' · ' + sub.date + (sub.building ? ' · ' + sub.building + ' ' + sub.floor : '');
+    var reason = window.prompt('ลบเช็คลิสต์: ' + label + '\n\nใส่เหตุผลที่ลบ (เช่น ข้อมูลทดสอบ, บันทึกซ้ำ)', '');
+    if(reason === null) return;
+    reason = String(reason).trim();
+    if(reason.length < 3){ showToast('กรุณาใส่เหตุผลที่ลบ'); return; }
+    if(!window.confirm('ยืนยันลบรายการนี้?\n' + label + '\n\nลบแล้วรูปของรายการนี้จะถูกลบด้วย (ระบบเก็บสำเนาข้อมูลและชื่อผู้ลบไว้)')) return;
+    google.script.run
+      .withSuccessHandler(function(){ showToast('ลบรายการแล้ว'); refreshSubmissions(); })
+      .withFailureHandler(function(err){ showToast((err && err.message) || 'ลบไม่สำเร็จ'); })
+      .CHECKLIST_deleteSubmission({ rowId: sub.id, submittedAt: sub.submittedAt, reason: reason });
+  }
 
   // เปิดแท็บใหม่ทันทีตอนกด (ถ้ารอเซิร์ฟเวอร์ก่อนแล้วค่อยเปิด มือถือจะบล็อกป๊อปอัป)
   function openSubmissionPdf(sub){
