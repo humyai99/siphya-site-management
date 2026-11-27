@@ -26,7 +26,9 @@
     .msg.err { display: block; background: var(--err); color: #8E1B1B; }
     .msg.ok { display: block; background: #E3F5EC; color: #135E40; }
 
-    .wrap { padding: 10px 16px 60px; overflow-x: auto; }
+    /* กรอบตารางสูงจำกัด → แถบเลื่อนซ้าย-ขวาอยู่ใต้กรอบที่เห็นเสมอ หัวตารางติดด้านบน */
+    .wrap { margin: 10px 16px 16px; overflow: auto; max-height: calc(100vh - 230px); min-height: 300px; }
+    th { z-index: 2; }
     table { border-collapse: collapse; background: #fff; min-width: 1990px; width: 100%; }
     th { position: sticky; top: 0; background: #EEF1F7; font-size: 12px; font-weight: 600; padding: 6px 4px; border: 1px solid var(--line); white-space: nowrap; }
     td { border: 1px solid var(--line); padding: 0; height: 32px; }
@@ -317,7 +319,19 @@
     msg('วาง ' + lines.length + ' แถวแล้ว ตรวจดูแล้วกด 💾 บันทึก', true);
   });
 
-  $('btnAdd').onclick = function () { for (var n = 0; n < 5; n++) S.rows.push(blank()); render(); var t = $('tb').querySelector('tr:last-child'); if (t) t.scrollIntoView({ block: 'center' }); };
+  // กรอบตารางสูงพอดีจอ (ใต้แถบด้านบน) → แถบเลื่อนซ้าย-ขวาอยู่ท้ายกรอบที่เห็นเสมอ
+  function fitWrap() {
+    var w = document.querySelector('.wrap'), top = document.querySelector('.top');
+    if (!w || !top) return;
+    w.style.maxHeight = Math.max(300, window.innerHeight - top.offsetHeight - 36) + 'px';
+  }
+  window.addEventListener('resize', fitWrap); fitWrap(); setTimeout(fitWrap, 300);
+  // เลื่อนเฉพาะในกรอบตาราง (ไม่เลื่อนทั้งหน้า)
+  function scrollRowIntoView(tr) {
+    var w = document.querySelector('.wrap');
+    w.scrollTop += tr.getBoundingClientRect().top - w.getBoundingClientRect().top - w.clientHeight / 2;
+  }
+  $('btnAdd').onclick = function () { for (var n = 0; n < 5; n++) S.rows.push(blank()); render(); var t = $('tb').querySelector('tr:last-child'); if (t) scrollRowIntoView(t); };
   $('chkAll').onchange = function () { var on = this.checked; visibleRows().list.forEach(function (x) { x.r.chk = on; }); render(); };
   $('q').oninput = function () { render(); };
 
@@ -464,7 +478,7 @@
       var reqs = {}; d.rows.forEach(function (r) { if (r.requester) reqs[r.requester] = 1; });
       $('dlReq').innerHTML = Object.keys(reqs).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('');
       render();
-      var last = $('tb').querySelector('tr.new, tr:last-child'); if (last && !okMsg) last.scrollIntoView({ block: 'center' });
+      var last = $('tb').querySelector('tr.new, tr:last-child'); if (last && !okMsg) scrollRowIntoView(last);
     }).withFailureHandler(function (e) { msg(e.message); }).TRANSPORT_entryData(code);
   }
 
