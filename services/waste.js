@@ -93,10 +93,12 @@ function thaiRange(from, to) {
 }
 
 // หา id โครงการจากชื่อ ถ้าไม่มีให้สร้าง (ไม่พึ่ง UNIQUE บนคอลัมน์ name เพราะตารางเดิมอาจไม่มี)
-async function ensureProject(client, name) {
+// create = false → ไม่สร้างใหม่ (ตอนบันทึกเที่ยว: โครงการต้องมีอยู่แล้ว — admin เป็นคนเพิ่ม)
+async function ensureProject(client, name, create = true) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['project_' + name]);
   const f = await client.query('SELECT id FROM projects WHERE name = $1 ORDER BY id LIMIT 1', [name]);
   if (f.rows.length) return f.rows[0].id;
+  if (!create) throw new UserError('ไม่พบโครงการ "' + name + '" — ให้ admin เพิ่มโครงการก่อน');
   return (await client.query('INSERT INTO projects (name) VALUES ($1) RETURNING id', [name])).rows[0].id;
 }
 
@@ -112,6 +114,7 @@ async function WASTE_getProjects() {
 }
 
 async function WASTE_saveNewProject(projectName) {
+  requireAdminCtx(this); // เพิ่มโครงการได้เฉพาะ admin (กันชื่อซ้ำ/สะกดเพี้ยน)
   const name = str(projectName, 200);
   if (!name) throw new UserError('กรุณากรอกชื่อโครงการ');
   await withTx(client => ensureProject(client, name));
@@ -242,7 +245,7 @@ async function WASTE_saveData(data) {
     const truck = await truckInfo(client, str(data.truck));
     if (!truck) return { success: false, message: 'ประเภทรถไม่ถูกต้อง: ' + str(data.truck) };
 
-    const projectId = await ensureProject(client, str(data.project, 200));
+    const projectId = await ensureProject(client, str(data.project, 200), false);
 
     // กันบันทึกซ้ำ: โครงการ + เลขบิล + ทะเบียน ซ้ำกับที่มีอยู่ (ล็อกตามโครงการกันกดซ้ำพร้อมกัน)
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['waste_' + projectId]);
@@ -352,7 +355,7 @@ async function WASTE_updateRecord(id, data) {
     if (bad) throw new UserError(bad);
     const truck = await truckInfo(client, str(data.truck));
     if (!truck) throw new UserError('ประเภทรถไม่ถูกต้อง: ' + str(data.truck));
-    const projectId = await ensureProject(client, str(data.project, 200));
+    const projectId = await ensureProject(client, str(data.project, 200), false);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['waste_' + projectId]);
     const dup = await client.query(
       'SELECT 1 FROM waste_records WHERE project_id = $1 AND bill_no = $2 AND plate_no = $3 AND id <> $4 LIMIT 1',

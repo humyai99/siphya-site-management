@@ -167,7 +167,7 @@
           <label>โครงการ <span class="req">*</span></label>
           <div style="display: flex; gap: 8px;">
             <select id="project" style="flex:1;" required></select>
-            <button type="button" class="btn-action" onclick="addProject()">+ เพิ่มโครงการ</button>
+            <button type="button" class="btn-action" id="addProjectBtn" onclick="addProject()" style="display:none">+ เพิ่มโครงการ</button>
           </div>
           <input type="text" id="newProject" placeholder="พิมพ์ชื่อโครงการใหม่..." style="margin-top: 6px; display:none;">
         </div>
@@ -1005,6 +1005,11 @@ function loadTruckTypes() {
     .WASTE_truckTypes();
 }
 
+// ปุ่มเพิ่มโครงการ — แสดงเฉพาะ admin
+fetch('/api/auth/me', { credentials: 'same-origin' }).then(r => r.json()).then(d => {
+  if (d && d.user && d.user.role === 'admin') $('addProjectBtn').style.display = '';
+}).catch(() => {});
+
 function loadProjectList() {
   google.script.run
     .withSuccessHandler(function(list) {
@@ -1050,7 +1055,7 @@ function addProject() {
       })
       .withFailureHandler(function(err) {
         console.error(err);
-        alert('⚠️ เพิ่มโครงการไม่สำเร็จ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่');
+        alert('⚠️ เพิ่มโครงการไม่สำเร็จ: ' + ((err && err.message) || 'กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่'));
       })
       .WASTE_saveNewProject(val);
   }
